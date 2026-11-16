@@ -1,9 +1,9 @@
 // The Hypertrophy Bible — brainless client. One decision per screen; everything
 // higher-order is derived server-side. No build step, no framework.
-import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish } from "/session-core.mjs";
+import { orderSupersetAdjacent, loggedWorkSets, nextUnfinishedIndex, stationProgress, dropDelivered, checkSetPR, checkLuckySet, LUCKY_SET_XP, LUCKY_SET_ONE_IN, rankPartners, weeklyRaceStatus, formatWeekLabel, isImplausibleSet, unconfirmedFlagged, todayTopSet, typoReference, IMPLAUSIBLE_REPS, LB_PER_KG, sanitizeTypedValue, normalizeWeightsToUnits, replaceSlot, restLength, restRemaining, activeRest, formatRest, adjustRest, newRest, REST_STEP_S, sessionChips, editLoggedSet, editDisplay, editConfirmKey, resolveEdit, nextPrLatch, undoApplies, nextSetHint, buildTargets, skipSet, skipRound, undoSkip, skipWouldFinish, moveToCurrent, deferToEnd, workoutList, hintInUnit, altOffer, prefillInUnit, localReadout , restAlertStep, repSeed, validAim, lastWorkReps, sameLoad, servedStep, finalizeHint, tiredSets, tiredDose, easeSlot, tiredSwapRow, swapInRow, swapWhyFor, rebasesOnPermanent, planLiftAfterPermanent, tiredOffer, EMPTY_BAR_KG, EMPTY_BAR_LB, repsEstimated, estimateSet, estimatedFields, repsShown, historyEditSet, dropSkipped, movedCue, noteSeeded, withFade, dropLastFade, fadeMarksAtFinish, setFadeReason, moveLoggedSet, removeLoggedSet, undoRemoveSet, nextOwedIndex } from "/session-core.mjs";
 import { renderMovementDemo } from "/movement-demo.mjs";
 import { resolveAdoption, adoptionMessage, retireOldReminder, rememberPendingCode, pendingCode, clearPendingCode } from "/account-adopt.mjs";
-import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
+import { familyOn, toggleFamily, visibleStyles, visibleStepFrom, groupSessionsByWeek, weekLabelOf, seedCalendarDays, filterExercises, linePath, sideCue, shiftDay, dayLabel, hubWorkoutState, calendarAdvice, bringBackCopy, swapUndoCopy, weekStrip, weekChipLabel, nextSessionLine, crossesBlockEnd, offPlanLabel, offPlanPreview, planFitCopy, planFitRequest, planFitVisible, timeFitCopy, timeFitApply, swapReason, moveRow, avoidExtras, mainSetupName, daysHint, priorityConsequence, timeFitDayQuestion, lastTimeGroups, sessionCapCopy, DAY_LONG, noteInUnit, hintCopy, readoutLists, friendlyMuscle, friendlyList , notifyOffer, trainingDaysHint, DEVICE_PREFS, permissionOutcome, notifyOutcome } from "/ui-helpers.mjs";
 const $ = (s, r = document) => r.querySelector(s);
 const app = $("#app");
 const nav = $("#nav");
@@ -258,24 +258,9 @@ async function tryPendingFollow() {
   } catch {}
 }
 
-// Rest-readiness self-check (considerations #7): between sets, teach people to
-// gauge their OWN recovery — the KB's rest-periods thesis is "rest by readiness,
-// not a stopwatch". Optional prompts, not mandatory ticking; the "I'm ready"
-// button is always live. Ticking all three just nudges the button. The countdown
-// stays as a soft guide alongside.
-const REST_CUES = [["breath", "🫁 Breath back to normal"], ["hr", "❤️ Heart rate settled"], ["mind", "🎯 Head in it — ready to push"]];
-const restReadiness = () => `<div class="card" style="text-align:left;margin-top:14px">
-    <p class="muted" style="margin:0 0 6px">Start your next set when you can tick these — rest by readiness, not the clock ${helpDot("rest-periods", "ⓘ why")}:</p>
-    ${REST_CUES.map(([k, label]) => `<button class="restcue" data-cue="${k}" role="checkbox" aria-checked="false" style="display:flex;align-items:center;width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:11px;margin:5px 0;font-size:1rem;text-align:left"><span class="cuebox" aria-hidden="true" style="margin-right:10px">⬜</span>${label}</button>`).join("")}</div>`;
-const wireRestCues = () => {
-  const cues = [...app.querySelectorAll("[data-cue]")];
-  cues.forEach((b) => b.onclick = () => {
-    const on = b.getAttribute("aria-checked") !== "true";
-    b.setAttribute("aria-checked", String(on));
-    b.querySelector(".cuebox").textContent = on ? "✅" : "⬜";
-    if (cues.every((c) => c.getAttribute("aria-checked") === "true")) { const s = $("#skip"); if (s) { s.textContent = "I'm ready — go 💪"; say("Recovered — ready for your next set."); } }
-  });
-};
+// Rest by readiness, not the clock (the KB's rest-periods thesis) — ONE muted line under the timer (W331). The old
+// three tick-boxes changed nothing but the button's label: the line says the same, without three more things to tap.
+const restReadiness = () => `<p class="muted" id="rest-ready" style="font-size:.9rem;margin:10px 0 0">Go when your breath is back and you feel ready — the timer is a guide ${helpDot("rest-periods", "ⓘ why")}</p>`;
 
 // PWA / push capability. On iOS, Web Push exists ONLY for a home-screen-installed
 // app — `PushManager` is absent in a normal Safari tab, so the reminders card
@@ -626,17 +611,26 @@ function prefsSummary(tp) {
 }
 
 const STEPS = [
-  { key: "training_status", q: "Have you lifted weights before?", opts: [["New to this", "beginner"], ["About a year in", "intermediate"], ["Several years", "advanced"]] },
-  { key: "primary_goal", q: "What do you want most?", opts: [["Build muscle", "hypertrophy"], ["Get stronger", "strength"], ["Lose fat", "fat-loss"], ["A bit of both", "recomposition"]] },
-  { key: "days_per_week", q: "How many days a week can you train?", stepper: { min: 2, max: 6, def: 3, hint: "Most beginners grow well on 3." } },
-  { key: "session_length_min", q: "How long can each session be?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: "45–60 minutes suits most people.", unit: " min" } },
-  { key: "available_equipment", q: "Where will you train?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight", ["bodyweight"]]] },
+  // W337 (owner: "Audit the onboarding flow. Some of the screens are more ambiguous than I'd like"): the SAME questions and
+  // stored values, said plainly — each option says what it means, and the hints that depend on an earlier answer read it
+  // (a function of `answers`), pinned in test-ui-helpers to the engine rules they describe.
+  { key: "training_status", q: "How long have you been lifting consistently?", opts: [["Not yet, or under a year", "beginner"], ["1–3 years", "intermediate"], ["3+ years", "advanced"]],
+    hint: "Count only steady training. Coming back after a long break? Pick the lower one — I move you up automatically as you log workouts." },
+  { key: "primary_goal", q: "What's your main goal right now?", def: "hypertrophy", opts: [["Build muscle", "hypertrophy", "Moderate reps, taken close to failure"], ["Get stronger", "strength", "Heavier, lower-rep main lifts"],
+    ["Lose fat, keep my muscle", "fat-loss", "Training that holds your muscle while you diet"], ["Build muscle and lose fat together", "recomposition", "Muscle-building training while you slowly lean out"]] },
+  { key: "days_per_week", q: "How many days a week can you reliably train?", stepper: { min: 2, max: 6, def: 3, hint: (a, v) => daysHint(v, a.training_status ?? "beginner") } },
+  { key: "session_length_min", q: "How long do you have for each workout?", stepper: { min: 30, max: 90, step: 15, def: 60, hint: (a, v) => `From your first warm-up to your last set — about ${Math.floor(v / 4)} sets at 4 minutes a set. 45–60 min suits most people; shorter still works.`, unit: " min" } },
+  { key: "available_equipment", q: "Where will you train most?", opts: [["A full gym", ["barbell", "dumbbell", "machine", "cable", "bodyweight", "band", "kettlebell"]], ["Home gym (dumbbells, bands, kettlebell)", ["dumbbell", "kettlebell", "band", "bodyweight"]], ["Home with dumbbells (and a bench)", ["dumbbell", "bodyweight"]], ["Bands & bodyweight", ["band", "bodyweight"]], ["Just my bodyweight (a pull-up bar helps)", ["bodyweight"]]],
+    hint: "Train somewhere else sometimes? Add it later in Settings → Other places you train. Missing a machine on the day? Tap “Change exercise” and I'll swap it." },
   // W321 (owner: "ask the necessary questions to understand what exercise/workouts the user likes … to improve long term
   // commitment, adherence and consistency"): ONE screen, every row optional. What they enjoy only ever reorders lifts
   // that are equally good for the muscle (plan-core's bounded preference term) — the plan stays optimal and says when a
   // preference couldn't be honoured. A lift to skip is swapped when an equal alternative exists, never banned.
   { key: "training_prefs", q: "What do you enjoy?", prefs: true, optional: true, hint: "All optional. I'll favour what you enjoy whenever it's as good as the best option for the muscle, and tell you when it isn't." },
-  { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs", ["quadriceps"]], ["Abs", ["abs"]]], optional: true, hint: "Optional. Pick one or two and we'll run a real specialization block — they get pushed hard while everything else eases back to a light dose to pay for it (most muscles keep slowly growing; a few drop to pure maintenance). Pick three or more and we'll just tilt volume their way." },
+  // W337: the hint is the CONSEQUENCE of what's picked, live — the engine's own rule (deriveSpecialization: beginners never
+  // run a block; one or two body AREAS do; three or more areas tilt), never a promise the plan won't keep.
+  { key: "priority_muscles", q: "Any muscles you especially want to grow?", multi: [["Shoulders (side delts — width)", ["side-delts"]], ["Chest", ["chest"]], ["Back", ["lats", "upper-back"]], ["Arms", ["biceps", "triceps"]], ["Glutes", ["glutes"]], ["Thighs (quads — the front)", ["quadriceps"]], ["Abs", ["abs"]]], optional: true,
+    hint: (a) => priorityConsequence((a.priority_muscles ?? []).flat(), a.training_status ?? "beginner", a.primary_goal ?? "hypertrophy").text },
   // "How hard should I push those muscles?" USED TO BE ASKED HERE. It isn't any more:
   // it asked the user to make a programming decision (balanced vs an all-in block)
   // that the app exists to make for them, and a lifter who could answer it wouldn't
@@ -660,7 +654,7 @@ const STEPS = [
   { key: "goal_event_date", q: "Training toward a specific date?", date: true, optional: true, hint: "Optional — a meet, show, or strength test. The final ~2 weeks taper volume down so you're fresh, not fatigued, on the day. Leave blank if there isn't one.", showIf: (a) => settingsMode && a.training_status !== "beginner" },
   // Neck and ankle were filterable by the engine (data/injury-contraindications.json
   // covers 8 regions) and selectable by nobody — the UI offered 6.
-  { key: "injuries", q: "Anything we should train around?", multi: INJURY_REGIONS, optional: true, hint: "Optional — we'll avoid aggravating movements." },
+  { key: "injuries", q: "Anything that hurts when you train, or that you're nursing back?", multi: INJURY_REGIONS, optional: true, hint: "Optional. I'll leave out the movements most likely to flare it up. Sharp or worsening pain → see a physio first." },
   // Severity was hardcoded "moderate" for everyone, which made contraExcluded's
   // `severity === "mild"` branch unreachable from the shipped client — a whole
   // leniency path that existed in the engine and could never run. Asking one
@@ -676,7 +670,7 @@ const STEPS = [
   // "severe" stays a valid stored value (schema, sanitizeInjuries, and the
   // /api/profile/injury escalation ladder all still accept it, and it behaves
   // exactly as it always did) so nobody who already answered it needs migrating.
-  { key: "injury_severity", q: "How much do they bother you?", opts: [["A niggle — I work around it", "mild"], ["Enough that I avoid some moves", "moderate"]], showIf: (a) => (a.injuries || []).flat().length > 0, hint: "A niggle only drops the movements most likely to aggravate it. Anything more also clears the ones that merely load the area." },
+  { key: "injury_severity", q: (a) => { const n = (a.injuries || []).flat(); return n.length === 1 ? `How much does your ${(INJURY_REGIONS.find(([, id]) => id === n[0])?.[0] ?? "injury").toLowerCase()} bother you?` : "How much do they bother you?"; }, opts: [["A niggle — I can train around it", "mild"], ["Some moves hurt — I avoid them", "moderate"]], showIf: (a) => (a.injuries || []).flat().length > 0, hint: "A niggle only drops the movements most likely to aggravate it. Anything more also clears the ones that merely load the area." },
   // `sex` and `units` used to be asked here and are not any more.
   //
   // `sex` had ZERO references in the training engine (plan-core, derive-core,
@@ -765,10 +759,14 @@ async function renderTrainingSettings() {
   const capRow = Number.isInteger(p.session_cap) ? `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">Workout cap</span><br><b>${p.session_cap} sets — learned from how your workouts have been going</b></div><button class="btn ghost inline" id="ts-uncap" style="margin:0">Remove</button></div>` : "";
   app.innerHTML = `<h1>Training settings</h1>
     <p class="muted">Change any answer on its own — your plan rebuilds around it. Your logged workouts are never touched.</p>
-    <div class="card">${rows.map(([k, l, v]) => `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">${l}</span><br><b>${esc(String(v))}</b></div><button class="btn ghost inline" data-solo="${k}" style="margin:0">Change</button></div>`).join("")}${capRow}</div>
+    <div class="card">${rows.map(([k, l, v]) => `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">${l}</span><br><b>${esc(String(v))}</b></div><button class="btn ghost inline" data-solo="${k}" style="margin:0">Change</button></div>`).join("")}${capRow}
+      ${(() => { const n = notUsingCount(d); return n ? `<div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">Lifts I'm not using</span><br><b>${n} lift${n === 1 ? "" : "s"}</b></div><button class="btn ghost inline" id="ts-notusing" style="margin:0">Review</button></div>` : ""; })()}
+      <div class="row"><div style="flex:1"><span class="muted" style="font-size:.85rem">Other places you train</span><br><b>${esc((p.equipment_setups?.others ?? []).map((o) => o.name).join(", ") || "None")}</b></div><button class="btn ghost inline" id="ts-setups" style="margin:0">Change</button></div></div>
     <button class="btn secondary inline" id="ts-full">Re-answer everything &amp; rebuild</button>
     <button class="btn ghost inline" id="ts-back">‹ Back</button>`;
   app.querySelectorAll("[data-solo]").forEach((b) => b.onclick = () => renderSettings(b.dataset.solo));
+  if ($("#ts-notusing")) $("#ts-notusing").onclick = () => renderNotUsing();
+  $("#ts-setups").onclick = () => renderSetups();
   $("#ts-full").onclick = () => renderSettings();
   $("#ts-back").onclick = () => { tab = "me"; render(); };
   if ($("#ts-uncap")) $("#ts-uncap").onclick = async () => {
@@ -830,8 +828,8 @@ function renderOnboarding() {
   if (!onbStarted) {
     app.innerHTML = `<div class="center" style="padding-top:14vh">${pendingCodeCard()}
       <h1>The Hypertrophy Bible</h1>
-      <p>Build muscle, the proven way.<br>I'll be your coach — you just show up.</p>
-      <button class="btn" id="go">Start</button>
+      <p>Build muscle, the proven way.<br>Answer 8 quick questions (about a minute) and I'll build your plan — then you just show up.</p>
+      <button class="btn" id="go">Build my plan</button>
       <p class="muted">Free · no ads · no account needed</p>
       <p class="muted" style="font-size:.8rem">By starting you agree this is training guidance, not medical advice — <a href="#" id="healthnote" style="color:var(--muted);text-decoration:underline">the honest details</a></p>
       <button class="btn ghost" id="restore">Already have progress saved? Sign in on this device</button>
@@ -878,16 +876,18 @@ function renderOnboarding() {
   const dotsDone = visible.findIndex((s) => s === STEPS[onbStep]);
   const dots = visible.map((_, i) => `<i class="${i <= dotsDone ? "on" : ""}"></i>`).join("");
   let body;
+  // W337: a question or hint may read the answers already given (and a stepper's hint its live value).
+  const hintOf = (h, v) => (typeof h === "function" ? h(answers, v) : h) || "";
   if (step.stepper) {
     const st = step.stepper;
     const v = answers[step.key] ?? st.def;
     const noun = step.key === "days_per_week" ? "days" : "minutes";
     body = `<div class="stepper"><button data-d="-1" aria-label="fewer ${noun}">–</button><div class="val" id="sv" aria-live="polite">${v}${st.unit || ""}</div><button data-d="1" aria-label="more ${noun}">+</button></div>
-      <p class="muted center">${st.hint}</p><button class="btn" id="next">Continue</button>`;
+      <p class="muted center" id="step-hint">${esc(hintOf(st.hint, v))}</p><button class="btn" id="next">Continue</button>`;
   } else if (step.multi) {
     const sel = new Set((answers[step.key] || []).map((x) => JSON.stringify(x)));
     body = step.multi.map((o, i) => { const on = sel.has(JSON.stringify(o[1])); return `<button class="choice${on ? " sel" : ""}" data-i="${i}" aria-pressed="${on}">${esc(o[0])}</button>`; }).join("")
-      + `<p class="muted center">${step.hint || ""}</p><button class="btn" id="next">Continue</button>`;
+      + `<p class="muted center" id="step-hint">${esc(hintOf(step.hint))}</p><button class="btn" id="next">Continue</button>`;
   } else if (step.prefs) {
     const tp = prefsOf(answers[step.key]);
     const eq = new Set(answers.available_equipment || []);
@@ -896,9 +896,12 @@ function renderOnboarding() {
     const chip = (group, val, label, on) => `<button class="chip pick${on ? " sel" : ""}" data-g="${group}" data-v="${esc(val)}" aria-pressed="${on}">${esc(label)}</button>`;
     const group = (title, chips) => chips ? `<div class="pref-group"><h3>${title}</h3>${chips}</div>` : "";
     body = (styles.length > 1 || tp.style.length ? group("I enjoy training with", styles.map((o) => chip("style", o.value, o.absent ? `${o.label} (not in your kit)` : o.label, tp.style.includes(o.value))).join("")) : "")
-      + group("I'd rather", PREF_VARIETY_OPTS.map(([l, v]) => chip("variety", v, l, tp.variety === v)).join(""))
-      + (fams.length ? group("Lifts I'd rather skip", fams.map((f, i) => chip("avoid", String(i), f.label, familyOn(tp, f))).join("")) : "")
-      + group("Cardio I'd actually do", PREF_CARDIO_OPTS.map(([l, v]) => chip("cardio", v, l, tp.cardio.includes(v))).join(""))
+      // W337: variety does nothing until a lifter is past the beginner stage — not asked of a beginner (still shown when set).
+      + (answers.training_status !== "beginner" || tp.variety ? group("I'd rather", PREF_VARIETY_OPTS.map(([l, v]) => chip("variety", v, l, tp.variety === v)).join("")) : "")
+      + (fams.length || avoidExtras(tp, fams).length ? group("Lifts you'd rather not do <span class=\"muted\" style=\"font-weight:400;font-size:.85rem\">— swapped when there's an equally good option</span>", fams.map((f, i) => chip("avoid", String(i), f.label, familyOn(tp, f))).join("")
+        // W336: a single lift skipped with "Just not for me" gets its own chip (on — tap to clear it).
+        + avoidExtras(tp, fams, (id) => { const n = exName(id); return n === id ? titleCase(id.replace(/-/g, " ")) : n; }).map((x) => chip("avoid1", x.id, x.label, true)).join("")) : "")
+      + group("If you do cardio, which would you actually do? <span class=\"muted\" style=\"font-weight:400;font-size:.85rem\">— it doesn't add sessions</span>", PREF_CARDIO_OPTS.map(([l, v]) => chip("cardio", v, l, tp.cardio.includes(v))).join(""))
       + `<p class="muted center">${esc(step.hint || "")}</p><button class="btn" id="next">Continue</button>`;
   } else if (step.date) {
     const v = answers[step.key] || "";
@@ -913,17 +916,19 @@ function renderOnboarding() {
   } else {
     // Highlight the previously chosen option (when returning via Back) so it's clear
     // what you'd picked; tapping any option still advances immediately.
-    const chosen = JSON.stringify(answers[step.key]);
-    body = step.opts.map((o, i) => `<button class="choice${JSON.stringify(o[1]) === chosen ? " sel" : ""}" data-i="${i}">${esc(o[0])}<span>›</span></button>`).join("")
-      + (step.hint ? `<p class="muted center">${esc(step.hint)}</p>` : "");
+    // …and the recommended answer is highlighted (never auto-advanced) until they pick (W337: "Build muscle" pre-selected).
+    const chosen = JSON.stringify(answers[step.key] ?? step.def);
+    body = step.opts.map((o, i) => `<button class="choice${JSON.stringify(o[1]) === chosen ? " sel" : ""}" data-i="${i}">${o[2] ? `<span style="text-align:left">${esc(o[0])}<span class="sub muted">${esc(o[2])}</span></span>` : esc(o[0])}<span>›</span></button>`).join("")
+      + (step.hint ? `<p class="muted center">${esc(hintOf(step.hint))}</p>` : "");
   }
-  app.innerHTML = `<div class="dots">${dots}</div><h1>${esc(step.q)}</h1>${body}
+  app.innerHTML = `<div class="dots">${dots}</div><h1>${esc(typeof step.q === "function" ? step.q(answers) : step.q)}</h1>${body}
     <button class="btn ghost" id="onb-back">‹ Back</button>`;
   if (step.stepper) {
     const st = step.stepper;
     let v = answers[step.key] ?? st.def;
     app.querySelectorAll("[data-d]").forEach((b) => b.onclick = () => {
       v = Math.max(st.min, Math.min(st.max, v + (+b.dataset.d) * (st.step || 1))); $("#sv").textContent = v + (st.unit || ""); answers[step.key] = v; saveOnb();
+      if ($("#step-hint") && typeof st.hint === "function") $("#step-hint").textContent = st.hint(answers, v); // W337: the hint follows the value
     });
     answers[step.key] = v;
     $("#next").onclick = advance;
@@ -937,6 +942,7 @@ function renderOnboarding() {
       b.classList.toggle("sel");
       b.setAttribute("aria-pressed", b.classList.contains("sel")); // no re-render here, so sync the attr
       saveOnb();
+      if ($("#step-hint") && typeof step.hint === "function") $("#step-hint").textContent = step.hint(answers); // W337: the consequence follows the picks
     });
     $("#next").onclick = advance;
   } else if (step.prefs) {
@@ -948,7 +954,8 @@ function renderOnboarding() {
       if (g === "variety") tp.variety = tp.variety === v ? null : v; // single choice; tap again to clear
       else if (g === "avoid") {
         tp.avoid = toggleFamily(tp, fams[+v]).avoid;
-      } else tp[g] = tp[g].includes(v) ? tp[g].filter((x) => x !== v) : [...tp[g], v];
+      } else if (g === "avoid1") tp.avoid = tp.avoid.filter((x) => x !== v); // W336: one lift off the list
+      else tp[g] = tp[g].includes(v) ? tp[g].filter((x) => x !== v) : [...tp[g], v];
       saveOnb();
       renderOnboarding(); // re-render: variety is single-choice, so a sibling's state changes too
     });
@@ -1133,6 +1140,117 @@ function buildPlanBlocks(d) {
 // sets × reps, one tap from anywhere. This surface did not exist: the only place
 // to SEE a non-today session was the EDITOR, three taps deep via Me. Exercise
 // rows open the bundled how-to sheet; the editor is one honest tap away.
+// THE LIFTS YOU'RE NOT USING (W272 / W323; W336 — owner: "there's no way to alternate preferences like … 'I don't have
+// this machine'"): ONE renderer and ONE Bring-back door, shown on the Plan tab AND in Training settings ("Lifts I'm not
+// using"), so the way back is where the lifter goes to change their mind — never only under the session list.
+function notUsingBlocks(d) {
+  const backRow = (u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}</div>
+      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`;
+  return {
+    unavailableBlock: (d.unavailable ?? []).length ? `<div class="card" id="unavailable-card"><b>🚫 Not available at your gym</b>
+    <p class="muted" style="margin:2px 0 6px">Your plan won't use these. Got access again? Bring it back.</p>
+    ${d.unavailable.map((u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}${u.replaced_by_name ? ` <span class="muted">→ ${esc(u.replaced_by_name)}</span>` : ""}</div>
+      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`).join("")}</div>` : "",
+    skippedBlock: (d.skipped ?? []).length ? `<div class="card" id="skipped-card"><b>🙅 Lifts you'd rather skip</b>
+    <p class="muted" style="margin:2px 0 6px">Swapped for one as good wherever there is one.</p>${d.skipped.map(backRow).join("")}</div>` : "",
+    learnedBlock: (d.learned_out ?? []).length ? `<div class="card" id="learned-card"><b>🔁 Swapped out because you kept swapping them</b>
+    <p class="muted" style="margin:2px 0 6px">Changed your mind? Bring one back and I'll stop learning against it.</p>${d.learned_out.map(backRow).join("")}</div>` : "",
+  };
+}
+const notUsingCount = (d) => (d?.unavailable?.length ?? 0) + (d?.skipped?.length ?? 0) + (d?.learned_out?.length ?? 0);
+function wireBringBack(after) {
+  app.querySelectorAll("[data-bring-back]").forEach((b) => b.onclick = async () => {
+    let r; try { r = await api("/api/exercise/cant-do", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: b.dataset.bringBack, scope: "undo" }) }); }
+    catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }
+    pendingNotice = r.error ? `Couldn't bring ${b.dataset.name} back — try again.` : bringBackCopy({ mode: r.mode, restored: r.restored, name: b.dataset.name });
+    await after();
+    if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
+  });
+}
+async function renderNotUsing() {
+  app.innerHTML = `<p class="muted">Loading…</p>`;
+  let d; try { d = await api(`/api/plan/explain`); } catch { d = null; }
+  if (!d) { app.innerHTML = `<h1>Lifts you're not using</h1><div class="card"><p>📴 You're offline — try again in a moment.</p></div><button class="btn ghost inline" id="nu-back">‹ Back</button>`; $("#nu-back").onclick = () => renderSettings(); return; }
+  const { unavailableBlock, skippedBlock, learnedBlock } = notUsingBlocks(d);
+  app.innerHTML = `<h1>Lifts you're not using</h1>
+    <p class="muted">Everything you've told me to leave out — and everything your swaps taught me to. Bring any back.</p>
+    ${unavailableBlock}${skippedBlock}${learnedBlock}${notUsingCount(d) ? "" : `<div class="card"><p class="muted" style="margin:0">Nothing — your plan can use every lift your setup allows.</p></div>`}
+    <button class="btn ghost inline" id="nu-back">‹ Back</button>`;
+  $("#nu-back").onclick = () => renderSettings();
+  wireBringBack(renderNotUsing);
+}
+// OTHER PLACES YOU TRAIN (W336 — owner chose to switch between setups such as home and gym). Each place is a name and its
+// kit (the same five presets onboarding asks with); the plan stays one plan — on a day at another place, Today swaps
+// each lift that place can't do for its closest match. The main setup is the one in Training settings → Equipment.
+// The Today chip (W336): where today is trained — shown only when the lifter has another place, never mid-workout. A tap
+// opens the choices inline; choosing one re-asks Today, which serves the day adapted to that place.
+function setupChip(dy) {
+  const st = dy?.setups;
+  if (!st?.options?.length || sess) return "";
+  const main = mainSetupName(st, st.options.map((o) => o.name));
+  const cur = st.active === "main" ? main : st.options.find((o) => o.id === st.active)?.name ?? main;
+  const opts = [{ id: "main", name: main }, ...st.options];
+  return `<div id="setup-chip" style="margin:0 0 6px"><button class="btn ghost inline" id="setup-open" aria-expanded="false" style="margin:0">📍 At ${esc(cur)} ▾</button>
+    <span id="setup-opts" hidden>${opts.map((o) => `<button class="chip pick${o.id === st.active ? " sel" : ""}" data-setup="${esc(o.id)}" aria-pressed="${o.id === st.active}">${esc(o.name)}</button>`).join("")}</span></div>`;
+}
+function wireSetupChip() {
+  if (!$("#setup-open")) return;
+  $("#setup-open").onclick = () => { const o = $("#setup-opts"), open = o.hidden; o.hidden = !open; $("#setup-open").setAttribute("aria-expanded", String(open)); };
+  app.querySelectorAll("[data-setup]").forEach((b) => b.onclick = async () => {
+    app.querySelectorAll("[data-setup]").forEach((x) => { x.disabled = true; });
+    try { const r = await api(`/api/setups`, { method: "POST", body: JSON.stringify({ user_id: uid, action: "activate", id: b.dataset.setup }) }); if (r?.error) throw 0; say(`Training at ${b.textContent} today.`); }
+    catch { alertBar("📴 Switching needs a connection — try again in a moment."); }
+    render();
+  });
+}
+async function renderSetups() {
+  app.innerHTML = `<p class="muted">Loading…</p>`;
+  let v; try { v = await api(`/api/setups`); } catch { v = null; }
+  if (!v) { app.innerHTML = `<h1>Other places you train</h1><div class="card"><p>📴 You're offline — try again in a moment.</p></div><button class="btn ghost inline" id="su-back">‹ Back</button>`; $("#su-back").onclick = () => renderSettings(); return; }
+  const kitName = (eq) => STEPS.find((x) => x.key === "available_equipment")?.opts?.find(([, k]) => [...k].sort().join(",") === [...(eq ?? [])].sort().join(","))?.[0] ?? "Custom mix";
+  app.innerHTML = `<h1>Other places you train</h1>
+    <p class="muted">Train somewhere else sometimes — at home, at a hotel? Add it here, then pick it on Today. Your plan stays the same; that day's lifts are swapped for the closest match the place has.</p>
+    ${v.others.map((o) => `<div class="card"><b>${esc(o.name)}</b> <span class="muted">· ${esc(kitName(o.equipment))}</span>${v.active === o.id ? ` <span class="chip wk-today" style="margin:0 0 0 6px;padding:2px 8px;font-size:.75rem">today</span>` : ""}
+      ${o.unavailable.length ? `<p class="muted" style="margin:6px 0 2px">Not available at ${esc(o.name)}:</p>${o.unavailable.map((u) => `<div class="row" style="border:0;padding:4px 0"><div style="flex:1">${esc(u.name)}</div><button class="btn ghost inline" data-su-back="${esc(o.id)}" data-ex="${esc(u.id)}" style="margin:0">Bring back</button></div>`).join("")}` : ""}
+      <div><button class="btn ghost inline" data-su-edit="${esc(o.id)}">Edit</button><button class="btn ghost inline" data-su-del="${esc(o.id)}">Remove</button></div></div>`).join("")}
+    ${v.others.length < v.max ? `<button class="btn secondary" id="su-add">+ Add a place</button>` : `<p class="muted">That's ${v.max} places — the most I keep.</p>`}
+    <button class="btn ghost inline" id="su-back">‹ Back</button>`;
+  $("#su-back").onclick = () => renderSettings();
+  if ($("#su-add")) $("#su-add").onclick = () => renderSetupEdit(null);
+  app.querySelectorAll("[data-su-edit]").forEach((b) => b.onclick = () => renderSetupEdit(v.others.find((o) => o.id === b.dataset.suEdit)));
+  const post = async (body, msg) => { try { const r = await api(`/api/setups`, { method: "POST", body: JSON.stringify({ user_id: uid, ...body }) }); if (r?.error) throw 0; say(msg); } catch { alertBar("📴 Couldn't save that — try again."); } renderSetups(); };
+  app.querySelectorAll("[data-su-del]").forEach((b) => b.onclick = () => {
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tap again to remove"; return; }
+    post({ action: "delete", id: b.dataset.suDel }, "Removed.");
+  });
+  app.querySelectorAll("[data-su-back]").forEach((b) => b.onclick = () => post({ action: "bring_back", id: b.dataset.suBack, exercise: b.dataset.ex }, "Brought back."));
+}
+function renderSetupEdit(o) {
+  const presets = STEPS.find((x) => x.key === "available_equipment")?.opts ?? [];
+  let name = o?.name ?? "", kit = o?.equipment ?? null;
+  const draw = () => {
+    app.innerHTML = `<h1>${o ? `Edit ${esc(o.name)}` : "Add a place"}</h1>
+      <div class="card"><p class="muted" style="margin:0 0 6px">What do you call it?</p>
+        <div>${["Home", "Travel", "Hotel gym", "Work gym"].map((n) => `<button class="chip pick${name === n ? " sel" : ""}" data-su-name="${esc(n)}" aria-pressed="${name === n}">${esc(n)}</button>`).join("")}</div>
+        <input id="su-name" type="text" maxlength="24" value="${esc(name)}" aria-label="Name of this place" placeholder="Or type a name" style="width:100%;margin-top:8px;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem"></div>
+      <div class="card"><p class="muted" style="margin:0 0 6px">What's there?</p>
+        ${presets.map(([l, v], i) => `<button class="choice${kit && [...kit].sort().join(",") === [...v].sort().join(",") ? " sel" : ""}" data-su-kit="${i}">${esc(l)}</button>`).join("")}</div>
+      <button class="btn" id="su-save">Save</button>
+      <button class="btn ghost inline" id="su-cancel">Cancel</button>`;
+    app.querySelectorAll("[data-su-name]").forEach((b) => b.onclick = () => { name = b.dataset.suName; draw(); });
+    $("#su-name").oninput = (e) => { name = e.target.value; };
+    app.querySelectorAll("[data-su-kit]").forEach((b) => b.onclick = () => { kit = presets[+b.dataset.suKit][1]; draw(); });
+    $("#su-cancel").onclick = () => renderSetups();
+    $("#su-save").onclick = async () => {
+      if (!name.trim() || !kit) { alertBar(!kit ? "Pick what's there first." : "Give it a name first."); return; }
+      let r = null; try { r = await api(`/api/setups`, { method: "POST", body: JSON.stringify({ user_id: uid, action: "save", ...(o ? { id: o.id } : {}), name, equipment: kit }) }); } catch {}
+      if (!r || r.error) { alertBar(r?.error === "too-many" ? "That's the most places I keep." : "📴 Couldn't save that — try again."); return; }
+      say(`${name.trim()} saved — pick it on Today when you train there.`);
+      renderSetups();
+    };
+  };
+  draw();
+}
 async function renderPlan() {
   app.innerHTML = `<h1>Your plan</h1><p class="muted">Loading…</p>`;
   let d, exs;
@@ -1150,7 +1268,7 @@ async function renderPlan() {
   const meta = new Map(exs.map((e) => [e.id, e]));
   const { cardioBlock, personalizationBlock, whyBlock } = buildPlanBlocks(d);
   // "Up next" (C16): the rotation pointer — the session Today serves on your next training day.
-  const sessionCards = (d.program?.sessions ?? []).map((s, i) => `<div class="card"><b>${esc(s.name)}</b>${i === d.up_next ? ` <span class="chip wk-today" style="margin:0 0 0 6px;padding:2px 8px;font-size:.75rem">Up next</span>` : ""}
+  const sessionCards = (d.program?.sessions ?? []).map((s, i) => `<div class="card"><b>${esc(s.name)}</b>${i === d.up_next ? ` <span class="chip wk-today" style="margin:0 0 0 6px;padding:2px 8px;font-size:.75rem">Up next</span>` : ""}${(d.ordered ?? []).includes(s.name) ? ` <span class="chip" style="margin:0 0 0 6px;padding:2px 8px;font-size:.75rem" title="In the order you set — kept when the plan changes">↕ your order</span>` : ""}
     ${d.rationale?.session_notes?.[s.name] ? `<p class="muted" style="margin:2px 0 4px">🌙 ${esc(d.rationale.session_notes[s.name])}</p>` : ""}
     ${orderSupersetAdjacent(s.exercises).map((e) => {
       const x = meta.get(e.exercise) || {};
@@ -1160,24 +1278,13 @@ async function renderPlan() {
         </div><span class="muted">›</span></button>`;
     }).join("")}
     ${(d.program?.sessions ?? []).length > 1 ? `<button class="btn ghost inline" data-do-today="${esc(s.name)}" style="margin-top:8px">🔁 Do this one today</button>` : ""}</div>`).join("");
-  // "Not available at your gym" (W272): every "No machine for this" answer, with its way
-  // back — the one-way door is never one-way (lesson 27).
-  const unavailableBlock = (d.unavailable ?? []).length ? `<div class="card" id="unavailable-card"><b>🚫 Not available at your gym</b>
-    <p class="muted" style="margin:2px 0 6px">Your plan won't use these. Got access again? Bring it back.</p>
-    ${d.unavailable.map((u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}${u.replaced_by_name ? ` <span class="muted">→ ${esc(u.replaced_by_name)}</span>` : ""}</div>
-      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`).join("")}</div>` : "";
+  const { unavailableBlock, skippedBlock, learnedBlock } = notUsingBlocks(d);
   // W320 (owner: "I'm convinced the system isn't learning"): a hand-edited plan pauses plan learning. Say so where the
   // plan is, with the one tap back — never a silent, permanent opt-out. Two taps: the second states what is replaced.
   const pausedBlock = d.program?.custom ? `<div class="card" id="learning-paused"><b>⏸ Plan learning is paused</b>
     <p class="muted" style="margin:2px 0 6px">You edited this plan, so it's yours: ${esc(d.beginner ? "I still set your weights and rest, but I've stopped swapping lifts that stall, re-fitting the plan to your pace, and stepping the plan up when you graduate." : "I still set your weights and rest and run your build-and-deload wave, but I've stopped swapping lifts that stall, tuning your sets per muscle, rotating accessories, bringing a deload forward when you need one, and stepping the plan up when you graduate.")}</p>
     <button class="btn secondary inline" id="coach-back" style="margin:0">Let the coach take over again</button></div>` : "";
-  // W323: what they'd rather skip (the quiz + "Just not for me"), and what their own swaps moved out — each with Bring back.
-  const backRow = (u) => `<div class="row" style="border:0;padding:6px 0"><div style="flex:1">${esc(u.name)}</div>
-      <button class="btn ghost inline" data-bring-back="${esc(u.id)}" data-name="${esc(u.name)}" style="margin:0">Bring back</button></div>`;
-  const skippedBlock = (d.skipped ?? []).length ? `<div class="card" id="skipped-card"><b>🙅 Lifts you'd rather skip</b>
-    <p class="muted" style="margin:2px 0 6px">Swapped for one as good wherever there is one.</p>${d.skipped.map(backRow).join("")}</div>` : "";
-  const learnedBlock = (d.learned_out ?? []).length ? `<div class="card" id="learned-card"><b>🔁 Swapped out because you kept swapping them</b>
-    <p class="muted" style="margin:2px 0 6px">Changed your mind? Bring one back and I'll stop learning against it.</p>${d.learned_out.map(backRow).join("")}</div>` : "";
+
   app.innerHTML = `<h1>Your plan</h1>
     <p class="muted">${esc(d.program?.name ?? "")} — tap any exercise for the how-to.</p>
     ${pausedBlock}
@@ -1206,13 +1313,7 @@ async function renderPlan() {
       if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
     };
   };
-  app.querySelectorAll("[data-bring-back]").forEach((b) => b.onclick = async () => {
-    let r; try { r = await api("/api/exercise/cant-do", { method: "POST", body: JSON.stringify({ user_id: uid, exercise: b.dataset.bringBack, scope: "undo" }) }); }
-    catch { alertBar("📴 Couldn't reach the server — nothing changed. Try again in a moment."); return; }
-    pendingNotice = r.error ? `Couldn't bring ${b.dataset.name} back — try again.` : bringBackCopy({ mode: r.mode, restored: r.restored, name: b.dataset.name });
-    await renderPlan();
-    if (pendingNotice) { alertBar(pendingNotice); pendingNotice = null; }
-  });
+  wireBringBack(renderPlan);
   // "Do this one today": the same server-side day swap the Today sheet does —
   // the chosen day and today's trade places for this cycle. Mid-session it's
   // refused client-side (the live session's exercises are already dealt).
@@ -1259,10 +1360,10 @@ async function renderPlanExplain(firstTime) {
       <div class="card"><p>Here's your week — <b>${sessions.length} short session${sessions.length === 1 ? "" : "s"}</b>. I chose every exercise, weight, and set for you. You just show up and tap <b>Start</b>.</p></div>
       <div class="card">${sessionRows}</div>
       ${cardioBlock}
-      <div class="card"><b>🚪 Never trained before?</b>
+      ${d.beginner ? `<div class="card"><b>🚪 Never trained before?</b>
         <p class="muted">These 2-minute reads make your first day easy.</p>
         <button class="btn secondary" data-learn="your-first-session">Your first session — a walkthrough</button>
-        <button class="btn secondary" data-learn="how-to-read-a-workout">How to read a workout</button></div>
+        <button class="btn secondary" data-learn="how-to-read-a-workout">How to read a workout</button></div>` : `<div class="card"><p class="muted" style="margin:0">New to reading a plan like this? <button class="learnlink" data-learn="how-to-read-a-workout">How to read a workout</button></p></div>`}
       ${personalizationBlock}
       ${whyBlock}
       <p class="muted" style="margin:8px 0">Weights shown in <b>${unitLabel()}</b>. <button class="learnlink" id="plan-units">Use ${unitPref() === "lb" ? "kilograms" : "pounds"} instead</button></p>
@@ -1331,9 +1432,8 @@ async function renderPlanExplain(firstTime) {
 }
 
 // ---------- Custom plan builder + KB critique ----------
-let editState = null, allExercises = [], pendingRm = null;
+let editState = null, allExercises = [], pendingRm = null, reorderDay = null, orderedDays = [];
 const exName = (id) => (allExercises.find((e) => e.id === id) || {}).name || id;
-const poolFor = (id) => { const ex = allExercises.find((e) => e.id === id); const ms = ex ? ex.primary_muscles : []; return allExercises.filter((e) => e.primary_muscles.some((m) => ms.includes(m))); };
 async function renderPlanEdit() {
   app.innerHTML = `<p class="muted">Loading…</p>`;
   let d, exs;
@@ -1347,13 +1447,23 @@ async function renderPlanEdit() {
   }
   allExercises = exs;
   editState = { name: d.program.name, custom: !!d.program.custom, sessions: JSON.parse(JSON.stringify(d.program.sessions || [])) };
-  pendingRm = null;
+  pendingRm = null; reorderDay = null; orderedDays = d.ordered ?? [];
   // show the current plan's critique straight away
   const crit = await api(`/api/plan/critique`, { method: "POST", body: JSON.stringify({ user_id: uid }) });
   drawEdit(crit);
 }
 function drawEdit(critique) {
-  const sessions = editState.sessions.map((s, si) => `<div class="card"><b>${esc(s.name)}</b>
+  // W335: a day in REORDER mode shows only ↑/↓ (no −/+/swap/✕ beside them), and "Done" saves the order on its own —
+  // on a plan the app still runs it's remembered and re-applied at every rebuild, so the plan keeps adapting.
+  const reorderRows = (s, si) => s.exercises.map((e, ei) => `<div class="row" data-si="${si}" data-ei="${ei}">
+      <div style="flex:1"><b>${esc(exName(e.exercise))}</b>${e.superset_with ? ` <span class="muted">🔗</span>` : ""}</div>
+      <button class="tapchip" data-mv="-1" aria-label="Move ${esc(exName(e.exercise))} up" ${moveRow(s.exercises, ei, -1) ? "" : "disabled"}>↑</button>
+      <button class="tapchip" data-mv="1" aria-label="Move ${esc(exName(e.exercise))} down" ${moveRow(s.exercises, ei, 1) ? "" : "disabled"}>↓</button></div>`).join("");
+  const sessions = editState.sessions.map((s, si) => reorderDay === si ? `<div class="card"><b>${esc(s.name)}</b> <span class="muted">· reordering</span>
+    <p class="muted" style="margin:4px 0 6px;font-size:.9rem">${editState.custom ? "Moves save with “Save &amp; re-check”." : "Your order is kept when the plan changes — rotations and swaps take their lift's place."}</p>
+    ${reorderRows(s, si)}
+    <button class="btn secondary" data-reorder-done="${si}">Done</button></div>` : `<div class="card"><b>${esc(s.name)}</b>${orderedDays.includes(s.name) ? ` <span class="chip" style="margin:0 0 0 6px;padding:2px 8px;font-size:.75rem">↕ your order</span>` : ""}
+    <div><button class="btn ghost inline" data-reorder="${si}" style="margin:2px 6px 4px 0">⇅ Reorder</button>${orderedDays.includes(s.name) && !editState.custom ? `<button class="btn ghost inline" data-reorder-reset="${si}" style="margin:2px 0 4px">Restore recommended order</button>` : ""}</div>
     ${s.exercises.map((e, ei) => `<div class="row" data-si="${si}" data-ei="${ei}">
       <div style="flex:1"><b>${esc(exName(e.exercise))}</b> <span class="muted">${e.sets} × ${esc(e.rep_range)} reps</span></div>
       <button class="tapchip" data-act="dec" aria-label="fewer sets">−</button><button class="tapchip" data-act="inc" aria-label="more sets">+</button>
@@ -1378,30 +1488,81 @@ function drawEdit(critique) {
       pendingRm = null; // any other action cancels a pending removal
       if (act === "inc") ex.sets = Math.min(10, ex.sets + 1);
       else if (act === "dec") ex.sets = Math.max(1, ex.sets - 1);
-      else if (act === "swap") {
-        const pool = poolFor(ex.exercise);
-        if (pool.length > 1) { const cur = pool.findIndex((p) => p.id === ex.exercise); ex.exercise = pool[(cur + 1) % pool.length].id; }
-        // Never a silent dead button: with your equipment this may be the only lift
-        // for the muscle — say so. The notice must be shown AFTER the repaint
-        // (drawEdit rebuilds app.innerHTML, which would destroy it), so repaint
-        // first, then attach the alert to the fresh DOM and stop.
-        else {
-          say("No alternative trains this muscle with your equipment.");
-          drawEdit(critique);
-          alertBar(`${exName(ex.exercise)} is the only lift for this muscle with your equipment — use “+ Add exercise” (or create your own) instead.`);
-          return;
-        }
-      }
+      else if (act === "swap") return renderEditSwap(si, ei, critique);
     }
     drawEdit(critique);
   });
   app.querySelectorAll("[data-add]").forEach((b) => b.onclick = () => renderAddExercise(+b.dataset.add));
+  app.querySelectorAll("[data-reorder]").forEach((b) => b.onclick = () => { reorderDay = +b.dataset.reorder; pendingRm = null; drawEdit(critique); });
+  app.querySelectorAll("[data-mv]").forEach((b) => b.onclick = () => {
+    const row = b.closest("[data-si]"), si = +row.dataset.si, ei = +row.dataset.ei, s = editState.sessions[si];
+    const next = moveRow(s.exercises, ei, +b.dataset.mv);
+    if (!next) return;
+    const moved = s.exercises[ei];
+    s.exercises = next;
+    drawEdit(critique);
+    say(`Moved ${exName(moved.exercise)} to ${next.indexOf(moved) + 1} of ${next.length}.`);
+    app.querySelector(`[data-si="${si}"][data-ei="${next.indexOf(moved)}"] [data-mv="${b.dataset.mv}"]`)?.focus();
+  });
+  const saveOrder = async (si, reset) => {
+    const s = editState.sessions[si];
+    let r = null;
+    try { r = await api(`/api/plan/order`, { method: "POST", body: JSON.stringify({ user_id: uid, session: s.name, ...(reset ? { reset: true } : { order: s.exercises.map((e) => e.exercise) }) }) }); } catch {}
+    if (!r || r.error) {
+      say("Couldn't save the order.");
+      alertBar(r?.error === "bad-order" ? "This day has other changes that aren't saved yet — tap “Save & re-check” first, then reorder." : "📴 Couldn't save your order — check your connection and tap Done again.");
+      return false;
+    }
+    orderedDays = r.ordered ?? [];
+    const fresh = (r.sessions ?? []).find((x) => x.name === s.name);
+    if (fresh) s.exercises = JSON.parse(JSON.stringify(fresh.exercises)); // the server's day: exactly what a rebuild produces
+    let crit = critique; try { crit = await api(`/api/plan/critique`, { method: "POST", body: JSON.stringify({ user_id: uid }) }); } catch {}
+    reorderDay = null; drawEdit(crit);
+    say(reset ? `${s.name} is back in the recommended order.` : `Order saved for ${s.name}.`);
+    return true;
+  };
+  app.querySelectorAll("[data-reorder-done]").forEach((b) => b.onclick = () => {
+    const si = +b.dataset.reorderDone;
+    if (editState.custom) { reorderDay = null; return drawEdit(critique); } // a hand-built plan: saved with Save, as every edit
+    saveOrder(si, false);
+  });
+  app.querySelectorAll("[data-reorder-reset]").forEach((b) => b.onclick = () => saveOrder(+b.dataset.reorderReset, true));
   $("#savePlan").onclick = async () => {
     let r; try { r = await api(`/api/plan/save`, { method: "POST", body: JSON.stringify({ user_id: uid, program: editState }) }); } catch { r = null; }
     if (r && r.ok) { localStorage.setItem("hb_program", editState.name); say("Plan saved."); drawEdit(r.critique); }
     else { say("Couldn't save."); alertBar("📴 Couldn't save — check your connection and tap Save again. Your edits are still here."); }
   };
   $("#backPlan").onclick = () => { tab = "plan"; render(); };
+}
+// The editor's swap (W334 — owner: "Does the 'swap' button choose a random exercise or does it pick the next best
+// option?"). It walked the exercise library in file order; now it asks the SAME ranked, fit-checked engine the player's
+// swaps use (/alternatives, scope=plan, the editor's unsaved day as `live`) and shows the best first, each with why.
+async function renderEditSwap(si, ei, critique) {
+  const s = editState.sessions[si], ex = s?.exercises?.[ei];
+  if (!ex) return drawEdit(critique);
+  app.innerHTML = `<h1>Swap ${esc(exName(ex.exercise))}</h1><p class="muted">Finding the best alternatives…</p>`;
+  let d = null;
+  try { d = await api(`/api/exercise/${encodeURIComponent(ex.exercise)}/alternatives?scope=plan&session=${encodeURIComponent(s.name)}&live=${encodeURIComponent(s.exercises.map((x) => x.exercise).join(","))}`); } catch {}
+  if (editState.sessions[si]?.exercises?.[ei] !== ex) return drawEdit(critique); // the day changed under the request
+  const alts = d?.alternatives ?? null;
+  if (!alts?.length) {
+    drawEdit(critique);
+    // Never a silent dead button: say why there's nothing to pick (after the repaint, which would destroy the notice).
+    alertBar(alts ? `Nothing else that trains this muscle fits this day with your equipment — keep ${exName(ex.exercise)}, or use “+ Add exercise” (or create your own).` : "📴 Swapping needs a connection — try again in a moment.");
+    return;
+  }
+  app.innerHTML = `<h1>Swap ${esc(exName(ex.exercise))}</h1>
+    <p class="muted">Ranked by the same rules that built your plan — the closest match that fits this day first. Same sets and reps.</p>
+    ${alts.map((a, i) => `<button class="choice" data-swap-to="${esc(a.id)}">${i === 0 ? "⭐ " : ""}${esc(a.name)}<span class="sub muted">${i === 0 ? "Best match · " : ""}${esc(swapReason(a.tier, a.mechanic))} · ${esc(friendlyMuscles(a.primary_muscles))}</span></button>`).join("")}
+    <button class="btn ghost" id="swap-back">Keep ${esc(exName(ex.exercise))}</button>`;
+  $("#swap-back").onclick = () => drawEdit(critique);
+  app.querySelectorAll("[data-swap-to]").forEach((b) => b.onclick = () => {
+    const a = alts.find((x) => x.id === b.dataset.swapTo);
+    if (a && !allExercises.some((x) => x.id === a.id)) allExercises.push({ id: a.id, name: a.name, primary_muscles: a.primary_muscles ?? [] });
+    ex.exercise = b.dataset.swapTo;
+    say(`Swapped for ${a?.name ?? exName(ex.exercise)}.`);
+    drawEdit(critique);
+  });
 }
 function renderAddExercise(si) {
   const sorted = allExercises.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -1753,7 +1914,7 @@ async function renderToday() {
     { key: "workout", icon: "🏋️", label: "Today's workout",
       sub: workoutDone ? `Logged — nice.${nextLine ? ` ${esc(nextLine)}` : ""}` : hubState === "missed" ? `Missed ${DAY_LONG[dy.missed_planned_day.day]}? Catch up today — ${esc(s.name)}` : esc(s.name),
       done: workoutDone, dismissed: restDay || unplanned,
-      dismissedLabel: unplanned ? esc(offPlanLabel({ nextDay: dy.next_planned_day, name: s.name, crossesBlock })) : "Rest day — recovery is training too",
+      dismissedLabel: unplanned ? esc(offPlanLabel({ nextDay: dy.next_planned_day, name: s.name, crossesBlock, movedBy: dy.absorbed_today?.by_day ?? null, weekDone: dy.week_done ?? null })) : "Rest day — recovery is training too",
       cta: unplanned ? "Train anyway" : "Start", action: workoutDone ? null : changeLink },
     { key: "calories", icon: "🌙", label: "Today's calories", sub: dy.calories_logged ? "Logged." : "Enter your day's total", done: dy.calories_logged, cta: "Log" },
   ];
@@ -1832,11 +1993,12 @@ async function renderToday() {
       // Not a training day: the next workout is a PREVIEW, folded away — "Train anyway"
       // on the hub row still starts it, so nothing is locked (rest is never a gate).
       ? `<details class="card"><summary><b>${esc(offPlanPreview({ nextDay: dy.next_planned_day, name: s.name, crossesBlock }))}</b></summary>${s.maintenance_note ? `<p class="muted" style="margin:6px 0">🌙 ${esc(s.maintenance_note)}</p>` : ""}${list}</details>`
-      : `<h2>What you'll do${s.minutes_estimate ? ` <span class="muted" style="font-size:.85rem;font-weight:400">· about ${Math.round(s.minutes_estimate)} min</span>` : ""} ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
+      : `<h2>What you'll do${s.minutes_estimate ? ` <span class="muted" style="font-size:.85rem;font-weight:400">· about ${Math.round(s.minutes_estimate)} min${s.pace_learned ? "" : " (≈4 min a set)"}</span>` : ""} ${helpDot("how-to-read-a-workout", "ⓘ how to read this")}</h2>${setupChip(dy)}${s.setup_note ? `<p class="muted" style="margin:0 0 6px">📍 ${esc(s.setup_note)}</p>` : ""}${s.maintenance_note ? `<p class="muted" style="margin:0 0 6px">🌙 ${esc(s.maintenance_note)}</p>` : ""}<div class="card">${list}</div>
     <button class="btn ghost inline" data-change-workout>🔁 Not this workout? Swap, skip, or rest</button>`}
     ${cardioCard}
     ${pushOn() || deviceNotifyOffer() ? `<button class="btn ghost inline" id="today-reminders" style="margin-top:8px">${pushOn() ? "🔔 Reminders" : "🔔 Get rest alerts &amp; reminders"}</button>` : ""}`;
   wirePendingCodeCard();
+  wireSetupChip(); // W336
   wireCommitmentCard();
   // A way in from the screen opened every day (W287); Me holds the controls, at its top.
   if ($("#today-reminders")) $("#today-reminders").onclick = () => { tab = "me"; render(); $("#reminders")?.scrollIntoView({ block: "start" }); };
@@ -2123,6 +2285,19 @@ let skipPending = false;    // two-tap guard on a skip that would END the workou
 // The one-line strip that offers to undo the last skip, while undoSkip says it still can
 // (nothing banked since, the order unchanged) — derived from the saved session, so a reload
 // keeps offering it.
+// W333: a removed set's one Undo (session-core undoRemoveSet decides whether it still fits).
+function removeUndoStrip() {
+  if (!sess?.lastRemoved || !undoRemoveSet(sess).ok) return "";
+  const name = sess.ex.find((x) => x.exercise === sess.lastRemoved.entry.exercise)?.name ?? sess.lastRemoved.entry.exercise;
+  return `<div class="cue" id="remove-undo" role="status">🗑 Removed a set of <b>${esc(name)}</b>. <button class="btn ghost inline" id="undo-remove" style="margin:0 0 0 4px">Undo</button></div>`;
+}
+function wireRemoveUndo(redraw) {
+  if ($("#undo-remove")) $("#undo-remove").onclick = () => {
+    const u = undoRemoveSet(sess);
+    if (!u.ok) return redraw();
+    sess = u.sess; saveSess(); say("Set put back."); redraw();
+  };
+}
 function skipUndoStrip() {
   if (!sess?.lastSkip || !undoSkip(sess).ok) return "";
   const names = sess.lastSkip.ids.map((id) => sess.ex.find((x) => x.exercise === id)?.name ?? id);
@@ -2209,13 +2384,14 @@ function wireSkipUndo(redraw) {
 // once, and a single slot meant confirming one un-confirmed the other, so a round
 // with two suspect entries could never be banked at all (see unconfirmedFlagged).
 let confirmSet = new Set();
-// Effort chips (Wave 171): tri-state hb_rir — "1" force-on, "0" force-off, unset =
-// on for everyone past the beginner stage (beginners are never asked: the KB says
-// novice RIR calls are noise, and the design spec forbids demanding effort of them;
-// Wave-164 graduation flips them in automatically). The chips never pre-select —
+// Effort chips (Wave 171; W330): hb_rir — "0" off, anything else on (W330, owner: on for
+// everyone — a beginner's answer still counts, its bump capped at one increment server-side,
+// and the chips are always optional, never demanded). The chips never pre-select —
 // an unanswered set sends NO rir at all, because a fabricated default would read
 // as "at target" forever and permanently blind the adaptive effort lever.
-const rirOn = () => { const v = localStorage.getItem("hb_rir"); return v === "1" ? true : v === "0" ? false : !(sess?.beginner); };
+// W330 (owner: RIR on for everyone): on unless the lifter switched it off on Me. A beginner's answers still count — the
+// weight they move is capped at one increment (coach.mjs suggestWeight), since novices' far-from-failure calls are rough.
+const rirOn = () => { try { return localStorage.getItem("hb_rir") !== "0"; } catch { return true; } };
 // One-tap effort capture, shared by the player and the superset station. Tapping
 // the selected chip clears it (a mis-tap escape) — only a deliberate answer is
 // ever logged. "4+" stores 4: still counted by isHardSet (rir > 4 wouldn't be),
@@ -2277,6 +2453,7 @@ function startSession(templateSession) {
   sess = {
     firstEver: templateSession.never_trained === true, // W327: this is the funnel's workout
     learningPaused: templateSession.learning_paused === true, // a hand-edited plan: picks are today-only, said so (review round 8 #3)
+    ...(templateSession.setup?.name ? { setupName: templateSession.setup.name } : {}), // W336: where today is trained
     // planned_sets (W280): each row's ORIGINAL set count, stamped once — what the workout
     // reports as its target, however a skip later shrinks today's `sets`.
     name: templateSession.name, ex: orderSupersetAdjacent(templateSession.exercises).map((x) => ({ ...x, planned_sets: x.sets })), i: 0, set: 0,
@@ -2703,7 +2880,7 @@ function setChipsHtml(ids) {
   if (!chips.length) return "";
   const named = ids.length > 1;
   return `<div class="muted" style="margin:4px 0 8px;font-size:.9rem">This session: ${chips.map((c) =>
-    `<button class="chip" data-fix="${c.idx}" aria-label="Fix ${esc(nameInSess(c.id))} ${c.set_type === "warmup" ? "warm-up" : "set"}: ${esc(setText(c, c.id, true))}">${named ? `${esc(nameInSess(c.id))} ` : ""}${c.set_type === "warmup" ? "warm-up " : ""}${esc(setText(c, c.id))} ✏️</button>`).join("")}</div>`;
+    `<button class="chip fix" data-fix="${c.idx}" aria-label="Fix ${esc(nameInSess(c.id))} ${c.set_type === "warmup" ? "warm-up" : "set"}: ${esc(setText(c, c.id, true))}">${named ? `${esc(nameInSess(c.id))} ` : ""}${c.set_type === "warmup" ? "warm-up " : ""}${esc(setText(c, c.id))} ✏️</button>`).join("")}</div>`;
 }
 function justLoggedHtml(idxs) {
   const items = idxs.filter((i) => sess.logged[i]);
@@ -2719,6 +2896,7 @@ function openSetEditor(idx, host, rerender) {
   if (!entry0 || !host) return;
   const unit = unitFor(entry0.exercise); // captured ONCE: shown and read back in the same unit
   setEditor = { idx, exercise: entry0.exercise, completed_at: entry0.completed_at ?? null, unit };
+  const ident = { exercise: entry0.exercise, completed_at: entry0.completed_at ?? null }; // W333: the entry this editor opened
   const shownW = editDisplay(entry0.weight_kg, unit), shownR = String(entry0.reps ?? "");
   // W307: a work set's RIR is editable too (where it's asked), an estimated field says so (~), and "Forgot the numbers?"
   // fills both from the lift's other sets — saved at once as an estimate, the editor's new baseline: an untouched field
@@ -2738,6 +2916,7 @@ function openSetEditor(idx, host, rerender) {
     ${askRir ? `<div class="row" style="border:0;gap:8px;align-items:center;padding:6px 0 0"><input id="fix-q" type="text" inputmode="numeric" value="${esc(shownQ)}" aria-label="Reps left in the tank${estQ ? ", estimated" : ""}" style="width:3.5rem;${field}"><span class="muted">${estQ ? "~ " : ""}left in the tank</span></div>` : ""}
     ${editorEstimate() ? `<button class="btn ghost inline" id="fix-est" style="margin:6px 0 0">Forgot the numbers?</button>` : ""}
     <p class="muted" id="fix-note" role="status" style="margin:6px 0 0"></p>
+    ${wrongLiftHtml()}
     <button class="btn secondary inline" id="fix-done" style="margin-top:8px">Done</button></div>`;
   const apply = () => {
     const ed = setEditor;
@@ -2785,7 +2964,35 @@ function openSetEditor(idx, host, rerender) {
     say(msg);
   };
   $("#fix-done").onclick = () => { setEditor = null; rerender(); };
+  // W333: the wrong lift — move this set to the lift it was, or remove it (two taps). session-core guards both; the
+  // buttons offered are exactly the moves it would accept.
+  host.querySelectorAll("[data-moveto]").forEach((b) => b.onclick = () => {
+    const r = moveLoggedSet(sess, idx, b.dataset.moveto, ident);
+    if (!r.ok) { if ($("#fix-note")) $("#fix-note").textContent = "That set changed — reopen it to move it."; return; }
+    sess = r.sess; setEditor = null; saveSess();
+    syncRestAlert(); // the log changed under a running rest: the server alarm follows what's on screen (review)
+    say(`Moved to ${nameInSess(b.dataset.moveto)}.`);
+    rerender();
+  });
+  if ($("#fix-rm")) $("#fix-rm").onclick = () => {
+    const b = $("#fix-rm");
+    if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Tap again — remove this set"; return; }
+    const r = removeLoggedSet(sess, idx, ident);
+    if (!r.ok) { if ($("#fix-note")) $("#fix-note").textContent = "That set changed — reopen it to remove it."; return; }
+    sess = r.sess; setEditor = null; saveSess();
+    syncRestAlert(); // removing the set a rest followed ends that rest — and its alarm (review)
+    say("Set removed — Undo is on the next screen.");
+    rerender();
+  };
   $("#fix-w").focus();
+  function wrongLiftHtml() {
+    const probe = removeLoggedSet(sess, idx, ident);
+    if (!probe.ok) return probe.reason === "station" ? `<p class="muted" style="margin:8px 0 0;font-size:.85rem">Wrong lift? Unlink the superset first, then move or remove this set.</p>` : "";
+    const targets = sess.ex.filter((x) => moveLoggedSet(sess, idx, x.exercise, ident).ok);
+    return `<details id="fix-wrong" style="margin:8px 0 0"><summary class="muted">Wrong exercise?</summary>
+      ${targets.map((x) => `<button class="btn ghost inline" data-moveto="${esc(x.exercise)}" style="margin:6px 6px 0 0">Move to ${esc(x.name)}</button>`).join("")}
+      <button class="btn ghost inline" id="fix-rm" style="margin:6px 0 0">🗑 Remove this set</button></details>`;
+  }
 }
 // Each rest records the timer it ran per lift (W308 — the read-out says "≈3:40 between sets (timer 3:00)"); a superset
 // round's shared rest is both legs'.
@@ -2802,7 +3009,7 @@ function showRest(rest, nextLine, row, onDone, announce, alertLabel = "") {
     <div id="fix-host">${justLoggedHtml(rest.kind === "round" ? [sess.logged.length - 2, sess.logged.length - 1] : [sess.logged.length - 1])}</div>
     ${restReadiness()}
     <button class="btn" id="skip" style="margin-top:12px">I'm ready</button></div>`;
-  wireRestCues(); wireLearnLinks(); wireSetFixes(onDone);
+  wireLearnLinks(); wireSetFixes(onDone);
   // Announce ONCE (the per-second #t is not aria-live, or it would spam a screen
   // reader every tick) and move focus to the only action.
   say(announce);
@@ -2967,21 +3174,23 @@ function renderPlayer() {
   const { hint, hintW, hc } = setHintFor(e);
   const hintHtml = hc ? `<div class="cue" id="set-hint" role="status">${hintIcon(hint)} <b>${hc.lead}</b> — ${hc.why}. Try <b>${hc.tryW}</b> ${hc.tail}
       ${hintButton(hint, hintW, w, reps, e, "use-hint")}</div>` : "";
-  app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1>${exListBtn()}</div>
+  // W331 (owner: "assume every element could be improved; if any element is not adding considerable value remove it"):
+  // ONE primary action (Done) and few doors. The name carries "How do I do this?" as an icon; the target and today's aim
+  // are one line; the three swap doors (tired, your pick, can't do) and "Do this later" are ONE "Change exercise" sheet
+  // (renderCantDo — tired first, your pick next); the teaching cues show once, on set 1; the movement demo lives in the
+  // how-to sheet, where it's asked for.
+  const changeDoor = sess.set === 0 && !e.superset_with;
+  app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">${esc(e.name)}</h1><button class="iconbtn" id="how" aria-label="How do I do ${esc(e.name)}?" title="How do I do this?">ⓘ</button>${exListBtn()}</div>
     ${pickCue()}
     ${swapUndoCard(e)}
-    <p class="muted">Target: ${setsN(e.sets)}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} × ${e.rep_range} reps · leave about ${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ what's RIR?")}</p>
-    ${aim ? `<p class="muted" id="rep-aim" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${aim.slice(0, e.sets).join(" · ")} reps</p>` : ""}
-    ${tiredOffer(sess) ? `<button class="btn ghost inline" id="tired" style="margin:-2px 0 8px">🥱 Too tired for this one?</button>` : ""}
-    ${pickOffer(sess) ? `<button class="btn ghost inline" id="your-pick" style="margin:-2px 0 8px">⇄ Rather do ${esc(e.your_pick.name)} today?</button>` : ""}
+    <p class="muted" id="target-line">${aim ? `Aim <b id="rep-aim">${aim.slice(0, e.sets).join(" · ")}</b> reps` : `${setsN(e.sets)} × ${e.rep_range} reps`}${e.planned_sets > e.sets ? ` (${e.planned_sets - e.sets} skipped)` : ""} · ~${e.rir} in the tank ${sess.beginner ? "" : helpDot("glossary", "ⓘ")}</p>
     ${sess.set === 0 && e.moved ? `<div class="cue" id="moved-cue">${movedCue(e, { deload: sess.deload })}</div>` : ""}
-    ${e.unilateral ? `<div class="cue">${sideCue(e)}</div>` : ""}
-    ${e.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> this move loads the muscle in its stretched position — where the growth signal is strongest. Feel a deep stretch at the bottom and control it; don't cut that part short.</div>` : ""}
+    ${e.unilateral && sess.set === 0 ? `<div class="cue">${sideCue(e)}</div>` : ""}
+    ${e.lengthened_bias && sess.set === 0 ? `<div class="cue">🎯 <b>Stretch-focused:</b> control the bottom — the stretch is where this lift grows the muscle.</div>` : ""}
     ${e.superset_with_name ? `<div class="cue">🔗 <b>Finishing ${esc(e.name)}:</b> you've done the paired rounds with ${esc(e.superset_with_name)} — these last set(s) are on their own, so take a normal rest.</div>` : ""}
-    ${sess.set === 0 ? renderMovementDemo(e.movement_pattern, e.exercise) : ""}
     <div class="setdots">${setDots}</div>
     <div id="fix-host">${setChipsHtml([e.exercise])}${sess.set === 0 && sess.logged.length && sess.logged[sess.logged.length - 1].exercise !== e.exercise ? justLoggedHtml([sess.logged.length - 1]) : ""}</div>
-    ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
+    ${sess.i === 0 && sess.set === 0 ? `<div class="cue">🔥 Warm up: 3–5 min easy, then a couple of light ramp-up sets.</div>` : ""}
     ${e.cue ? `<div class="cue">💡 ${esc(e.cue)}</div>` : ""}
     ${firstEver ? (e.tired ? (e.tried_easy ? `<div class="card info"><b>Still finding your weight, on a tired day 🎯</b>
       <p class="muted">Keep it light: a weight that feels comfortable, and stop each set while your form is solid. Today won't set your starting weight either — that's for a fresher day.</p></div>` : `<div class="card info"><b>New lift, on a tired day 🎯</b>
@@ -2990,10 +3199,9 @@ function renderPlayer() {
       <p class="muted">Your last go at this was an easier day, so it didn't set a starting weight. Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank) — ${easyToday ? "today's an easier day too, so your next regular session will." : "today's sets will."}</p></div>`
       : easyToday ? `<div class="card info"><b>New lift — keep it light today 🎯</b>
       <p class="muted">Today's an easier day, so its sets won't set your starting weight. Start light and stop each set while your form is solid — your next regular session finds it.</p></div>`
-      : `<div class="card info"><b>New lift — let's find your weight 🎯</b>
-      <p class="muted">Start light and add a little each set until the last rep is hard but clean (about ${e.rir} left in the tank). A couple of easy ramp-up sets first isn't wasted — it's how you find your number, and it's saved for next time.</p>
-      <button class="btn ghost" data-learn="choosing-your-starting-weight">How to pick your starting weight</button></div>`) : ""}
-    ${skipUndoStrip()}
+      : `<div class="card info" style="padding:10px 14px"><b>New lift — let's find your weight 🎯</b>
+      <p class="muted" style="margin:4px 0 0">Start light; add a little each set until the last rep is hard but clean (~${e.rir} in the tank). Today's weight is where next time starts. <button class="learnlink" data-learn="choosing-your-starting-weight">How to pick it</button></p></div>`) : ""}
+    ${skipUndoStrip()}${removeUndoStrip()}
     <div class="card">
       ${hintHtml}
       ${weightStepper(w, e.equipment === "bodyweight", null, e.exercise)}
@@ -3004,13 +3212,10 @@ function renderPlayer() {
       ${forgotHtml(sess.i)}
       ${confirmSet.has(e.exercise) ? `<div class="cue" role="status" data-confirm-cue>${setConfirmCue(sess.i)}</div>` : ""}
       <button class="btn" id="done" data-idle-label="Done — set ${sess.set + 1} of ${e.sets}">${confirmSet.has(e.exercise) ? "Tap again — log it as entered" : `Done — set ${sess.set + 1} of ${e.sets}`}</button>
-      ${sess.set === 0 ? `<button class="btn ghost" id="warmup" style="margin-top:6px">＋ Log a warm-up set (optional)</button>` : ""}
     </div>
-    <button class="btn ghost" id="how">How do I do this?</button>
-    ${sess.set === 0 && !e.superset_with ? `<button class="btn ghost" id="cantdo">🙅 Can't do this one?</button>` : ""}
+    ${changeDoor ? `<button class="btn ghost" id="cantdo">⇄ Change exercise${pickOffer(sess) ? ` <span class="muted">· or ${esc(e.your_pick.name)}?</span>` : ""}</button>` : ""}
     <button class="btn ghost" id="skipset">${skipPending ? "Tap again — skip it and finish the workout" : "⏭ Skip this set"}</button>
-    ${sess.set === 0 && !e.superset_with && sess.i < total - 1 ? `<button class="btn ghost" id="later">⤵️ Do this later</button>` : ""}
-    <button class="btn ghost" id="quit">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
+    <button class="btn ghost" id="quit">Finish early</button>`;
   wireLearnLinks();
   // Each set replaces the whole screen; without this, focus falls to <body> and
   // a keyboard user must re-Tab past every cue and stepper to reach Done. Land
@@ -3018,25 +3223,11 @@ function renderPlayer() {
   // new screen, and the heading name is announced to a screen reader.
   $("#ex-head")?.focus();
   if ($("#cantdo")) $("#cantdo").onclick = () => renderCantDo();
-  if ($("#tired")) $("#tired").onclick = () => tiredSwap();
-  if ($("#your-pick")) $("#your-pick").onclick = () => yourPickSwap();
   wireSetFixes(() => renderPlayer(0));
   if ($("#swap-undo")) $("#swap-undo").onclick = undoSwap;
-  if ($("#later")) $("#later").onclick = () => deferCurrentExercise();
   wireListDoors();
-  // Optional ramp-up logging: bank a warm-up set at the current weight/reps with
-  // set_type "warmup". It's crash-mirrored like any set but EXCLUDED from every
-  // derivation (loggedWorkSets/isHardSet/countsForE1RM all gate on "work"), so it
-  // never advances the work-set cursor, counts toward volume, or moves e1RM — it's
-  // purely a record. Adjust the steppers to your warm-up load first, then tap.
-  if ($("#warmup")) $("#warmup").onclick = () => {
-    quitPending = false;
-    sess.logged.push({ exercise: e.exercise, set_type: "warmup", weight_kg: bankKg(sess.i), reps: sess.reps[sess.i], completed_at: new Date().toISOString() });
-    saveSess();
-    const n = sess.logged.filter((l) => l.exercise === e.exercise && l.set_type === "warmup").length;
-    say(`Warm-up set logged.`);
-    $("#warmup").textContent = `＋ Warm-up logged ✓ (${n}) — add another?`;
-  };
+  // (W331: the optional "Log a warm-up set" button is gone — every derivation excludes warm-ups, so it was a record
+  // nothing read, and a button on every lift's first set. Stored warm-up rows from older builds still load and sync.)
 
   // In-place stepper updates: a full repaint on every tap destroys the tapped
   // button (dumping keyboard/screen-reader focus) and never announces the new
@@ -3064,19 +3255,14 @@ function renderPlayer() {
     try { d = await api(`/api/exercise/${e.exercise}`); } catch {}
     renderExerciseSheet(e, d, { label: "Back to workout", onClick: () => renderPlayer(0) });
   };
-  $("#quit").onclick = () => {
-    // One stray tap must not end a workout: confirm on the second tap.
-    if (!quitPending) { quitPending = true; return renderPlayer(0); }
-    quitPending = false;
-    if (!sess.logged.length) { clearSess(); say("Workout closed — nothing was logged."); return render(); }
-    if (!sess.complete) sess = withFade(sess, "early"); // a fade mark (W314): ended with work left
-    finish();
-  };
+  $("#quit").onclick = () => renderFinishSheet(() => renderPlayer(0));
   // W279b: the hint's one tap — the stepper takes the suggested weight in this lift's
   // display unit (the same per-index stamp a typed weight gets); nothing is banked.
   wireSkipUndo(() => renderPlayer(0));
+  wireRemoveUndo(() => renderPlayer(0));
   $("#skipset").onclick = () => {
-    if (skipWouldFinish(sess) && !skipPending) { skipPending = true; quitPending = false; return renderPlayer(0); }
+    // W332: a skip that would END the workout is a finish — the same sheet says so, and asks why.
+    if (skipWouldFinish(sess)) return renderFinishSheet(() => renderPlayer(0), { skip: () => skipSet(sess) });
     applySkip(skipSet(sess), () => renderPlayer(0));
   };
   wireAltWeight(() => { clearSetConfirm(); quitPending = false; renderPlayer(0); });
@@ -3101,6 +3287,7 @@ function renderPlayer() {
     if (sess.logged.filter((l) => (l.set_type ?? "work") === "work").length === 1) funnelStep("first_set"); // W327
     if (sess.estPending) delete sess.estPending[e.exercise];
     delete sess.offerPick; // a banked set answers "Pick a different one" (W306)
+    delete sess.lastRemoved; // a removed set's Undo belongs to the log as it was (W333)
     delete sess.eff[sess.i]; // each set is its own call — an answer never carries over
     delete sess.reps[sess.i]; // …and the next set starts on ITS aim (W289), re-derived from the banked count
     sess.set++;
@@ -3113,7 +3300,9 @@ function renderPlayer() {
       // Advance to the next exercise still owing sets — this skips anything already
       // fully logged (e.g. a superset partner completed during its station), so the
       // player can never land back on a done move and log a phantom extra set.
-      const nx = nextExerciseIndex(sess.i);
+      // …then from the start (W333): a lift BEHIND the cursor can owe again (a set moved off it or removed), and must
+      // never be dropped with the workout marked complete.
+      const nx = nextOwedIndex(sess.logged, sess.ex, sess.i);
       // Recompute the set cursor from what's already BANKED on the next exercise
       // (every other advance site does this — 808/1008/1025/1152). Without it, an
       // advance onto a partially-completed lift — reachable after Unlink or a
@@ -3173,10 +3362,9 @@ function renderSupersetStation(L, P) {
       <h2 style="margin-top:0">${esc(m.name)}</h2>
       <p class="muted">Target: ${m.sets} sets × ${m.rep_range} reps · leave about ${m.rir} in the tank</p>
       ${round === 0 && validAim(m) ? `<p class="muted" style="font-size:.9rem;margin:-6px 0 8px">Today's aim: ${validAim(m).slice(0, m.sets).join(" · ")} reps</p>` : ""}
-      ${m.unilateral ? `<div class="cue">${sideCue(m, { station: true })}</div>` : ""}
-      ${m.lengthened_bias ? `<div class="cue">🎯 <b>Stretch-focused:</b> feel a deep stretch at the bottom and control it; don't cut it short.</div>` : ""}
+      ${m.unilateral && round === 0 ? `<div class="cue">${sideCue(m, { station: true })}</div>` : ""}
+      ${m.lengthened_bias && round === 0 ? `<div class="cue">🎯 <b>Stretch-focused:</b> control the bottom — the stretch is where this lift grows the muscle.</div>` : ""}
       ${m.cue ? `<div class="cue">💡 ${esc(m.cue)}</div>` : ""}
-      ${round === 0 ? renderMovementDemo(m.movement_pattern, m.exercise) : ""}
       ${(() => { const lh = setHintFor(m); return lh.hc ? `<div class="cue" role="status">${hintIcon(lh.hint)} <b>${lh.hc.lead}</b> — ${lh.hc.why}. Try <b>${lh.hc.tryW}</b> ${lh.hc.tail} ${hintButton(lh.hint, lh.hintW, w, reps, m, `leg-hint-${idx}`)}</div>` : ""; })()}
       ${weightStepper(w, m.equipment === "bodyweight", idx, m.exercise)}
       ${lastTimeLine(m)}
@@ -3191,15 +3379,15 @@ function renderSupersetStation(L, P) {
 
   app.innerHTML = `<div class="exhead"><h1 tabindex="-1" id="ex-head">🔗 Superset</h1><span class="num">round ${round + 1}/${paired}</span>${exListBtn()}</div>
     ${pickCue()}
-    <p class="muted">Do one set of each, back to back with little rest between them. Rest only after you've done <b>both</b> — that's one round. It fits more work into your time without the two moves competing.</p>
+    ${round === 0 ? `<p class="muted">One set of each, back to back — then rest. That's one round.</p>` : ""}
     ${L === 0 && round === 0 ? `<div class="cue">🔥 Warm up first: 3–5 min of easy movement, then a couple of light ramp-up sets before your working sets.</div>` : ""}
-    ${skipUndoStrip()}
+    ${skipUndoStrip()}${removeUndoStrip()}
     ${memberBlock(L)}${memberBlock(P)}
     <div id="fix-host">${setChipsHtml([A.exercise, B.exercise])}</div>
     <button class="btn" id="doner" data-idle-label="Done — round ${round + 1} of ${paired}">${[L, P].some((i) => confirmSet.has(sess.ex[i]?.exercise)) ? "Tap again — log the round as entered" : `Done — round ${round + 1} of ${paired}`}</button>
     <button class="btn ghost" id="unlink">🔓 Station busy? Do these one at a time</button>
     <button class="btn ghost" id="skipround">${skipPending ? "Tap again — skip it and finish the workout" : "⏭ Skip this round"}</button>
-    <button class="btn ghost" id="quitr">${quitPending ? (sess.logged.length ? "Tap again — save what you've done and end" : "Tap again to close (nothing logged yet)") : "End workout early"}</button>`;
+    <button class="btn ghost" id="quitr">Finish early</button>`;
 
   // In-place stepper updates (same rationale as the single-exercise player): keep
   // the tapped button alive for focus, let aria-live announce; re-render only when
@@ -3228,11 +3416,12 @@ function renderSupersetStation(L, P) {
     renderExerciseSheet(m, d, { label: "Back to workout", onClick: () => renderPlayer(0) });
   });
   wireSkipUndo(() => renderPlayer(0));
+  wireRemoveUndo(() => renderPlayer(0));
   // "Skip this round" (W281): BOTH members lose this round, so rounds stay balanced; a skip
   // that would end the workout asks first. renderPlayer routes back into the station while
   // it still owes rounds, or on to whatever is next.
   $("#skipround").onclick = () => {
-    if (skipWouldFinish(sess, [L, P]) && !skipPending) { skipPending = true; quitPending = false; return renderSupersetStation(L, P, 0); }
+    if (skipWouldFinish(sess, [L, P])) return renderFinishSheet(() => renderSupersetStation(L, P, 0), { skip: () => skipRound(sess, L, P) });
     applySkip(skipRound(sess, L, P), () => renderPlayer(0));
   };
   // A new weight disarms "End workout early" and is judged afresh by the typo guard, as on the straight player (Burst 8 review #10).
@@ -3258,6 +3447,7 @@ function renderSupersetStation(L, P) {
     if (suspects.length) { for (const i of suspects) confirmSet.add(sess.ex[i].exercise); return renderSupersetStation(L, P, 0); }
     confirmSet.clear();
     delete sess.offerPick; // a banked round answers "Pick a different one" (W306)
+    delete sess.lastRemoved; // (W333)
     const roundSets = []; // both members of the round, banked together
     const at = new Date().toISOString(); // ONE stamp per round (W311): time between sets reads a round as one moment
     for (const idx of [L, P]) {
@@ -3307,13 +3497,76 @@ function renderSupersetStation(L, P) {
     say("Unlinked — do them one at a time. Take a normal rest between sets.");
     renderPlayer(0);
   };
-  $("#quitr").onclick = () => {
-    if (!quitPending) { quitPending = true; return renderSupersetStation(L, P, 0); }
-    quitPending = false;
-    if (!sess.logged.length) { clearSess(); say("Workout closed — nothing was logged."); return render(); }
-    if (!sess.complete) sess = withFade(sess, "early"); // a fade mark (W314): ended with work left
-    finish();
+  $("#quitr").onclick = () => renderFinishSheet(() => renderSupersetStation(L, P, 0));
+}
+// FINISH EARLY (W332 — owner: "The options at the end of the workout are a bit ambiguous. The options should be obvious
+// what they do and then allow you to choose the reason"). One sheet for every way a workout ends before its last set
+// (Finish early, on a lift or a superset; a skip that would end it): first WHAT happens — what's done, what's left, and
+// that unfinished lifts keep their weight — then, optionally, WHY. The end is written the moment it's confirmed (the mark
+// and the save), so a crash on the reason screen never loses the workout; the reason is stamped on after. Only "tired"
+// (or no answer) teaches the session ceiling — running out of time is no evidence of fading.
+function renderFinishSheet(back, { skip = null } = {}) {
+  if (!sess) return render();
+  cantDoGen++; stopRestTimer(); skipPending = false; quitPending = false;
+  if (!sess.logged.length) {
+    app.innerHTML = `<h1>Close this workout?</h1>
+      <div class="card"><p style="margin:0">Nothing's logged yet, so there's nothing to save. Your plan stays exactly as it is.</p></div>
+      <button class="btn" id="fin-close">Close — nothing to save</button>
+      <button class="btn ghost" id="fin-back">Keep going</button>`;
+    $("#fin-close").onclick = () => { clearSess(); say("Workout closed — nothing was logged."); render(); };
+    $("#fin-back").onclick = back;
+    $("#fin-close").focus();
+    return;
+  }
+  const rows = workoutList(sess);
+  const done = (sess.logged ?? []).filter((l) => (l?.set_type ?? "work") === "work").length;
+  const planned = rows.reduce((a, x) => a + x.sets, 0);
+  // What's still OWED today (a skip already shrank a lift's count — review), not its planned count.
+  const left = rows.map((x) => ({ ...x, owed: Math.max(0, (sess.ex[x.idx]?.sets ?? x.sets) - x.done) })).filter((x) => x.owed > 0).map((x) => `${x.name} (${x.owed})`);
+  app.innerHTML = `<h1>${skip ? "That's the last set left — finish now?" : "Finish now?"}</h1>
+    <div class="card"><p style="margin:0 0 6px">You've done <b>${done} of ${planned}</b> sets.</p>
+      ${left.length ? `<p class="muted" style="margin:0 0 6px">Still to do: ${esc(left.join(", "))}.</p><p class="muted" style="margin:0">Unfinished lifts keep this weight next time — nothing's lost.</p>` : ""}</div>
+    <button class="btn" id="fin-save">Save and finish</button>
+    <button class="btn ghost" id="fin-back">Keep going</button>`;
+  $("#fin-back").onclick = back;
+  $("#fin-save").focus();
+  $("#fin-save").onclick = () => {
+    if (skip) {
+      // The skip itself, as "Skip this set" does it (its own fade mark) — then the reason screen.
+      const r = skip();
+      if (r.ok) { sess = withFade(dropSkipped(sess, r.sess), "skip"); }
+      else if (!sess.complete) sess = withFade(sess, "early");
+    } else if (!sess.complete) sess = withFade(sess, "early"); // a fade mark (W314): ended with work left
+    // The workout is OVER from this tap (review): marked complete with its end, so leaving the reason screen (a tab, a
+    // locked phone, a crash) resumes as "just needs saving" — never as a workout still in progress whose stale end
+    // mark a later finish would carry.
+    sess = { ...sess, complete: true };
+    saveSess();
+    renderFinishReason();
   };
+}
+const FINISH_REASONS = [["tired", "🪫 Too tired — running on empty", "Helps me size your workouts"], ["time", "⏱ Out of time", ""], ["pain", "😖 Something hurts", "Tell me where — I'll train around it"], ["equipment", "🏋️ Equipment or the gym", ""], ["interrupted", "📞 Something came up", ""]];
+function renderFinishReason() {
+  app.innerHTML = `<h1>What cut it short?</h1>
+    <p class="muted">Optional — one tap. Only tiredness changes how long I make your workouts.</p>
+    ${FINISH_REASONS.map(([k, l, sub]) => `<button class="choice reason" data-why="${k}">${l}${sub ? `<span class="sub muted">${sub}</span>` : ""}</button>`).join("")}
+    <button class="btn ghost" id="fin-skip">Skip — just save</button>`;
+  $("#fin-skip").onclick = () => finish();
+  app.querySelectorAll("[data-why]").forEach((b) => b.onclick = () => {
+    sess = setFadeReason(sess, b.dataset.why); saveSess();
+    if (b.dataset.why !== "pain") return finish();
+    app.innerHTML = `<h1>Where does it hurt?</h1>
+      <p class="muted">I'll keep movements that aggravate it out of your plan. Sharp or worsening pain → see a physio first.</p>
+      ${INJURY_REGIONS.map(([label, id]) => `<button class="choice" data-hurt="${esc(id)}">${esc(label)}</button>`).join("")}
+      <button class="btn ghost" id="fin-skip">Skip — just save</button>`;
+    $("#fin-skip").onclick = () => finish();
+    app.querySelectorAll("[data-hurt]").forEach((h) => h.onclick = async () => {
+      app.querySelectorAll("#app button").forEach((x) => { x.disabled = true; });
+      // The workout is saved first either way: the report is a best effort (offline → it can be told from Settings).
+      try { await api("/api/profile/injury", { method: "POST", body: JSON.stringify({ user_id: uid, region: h.dataset.hurt }) }); say(`Noted — I'll keep ${h.dataset.hurt.replace("-", " ")}-aggravating movements out of your plan.`); } catch {}
+      finish();
+    });
+  });
 }
 // The "how do I do this?" sheet: full cues + mistakes from the KB, plus the
 // inline line-art movement demo (real per-exercise footage is BLOCKERS.md #1 —
@@ -3379,7 +3632,9 @@ function renderExerciseSheet(ex, d, back) {
 function swapUndoCard(e) {
   const u = sess?.swapUndo;
   if (!undoApplies(u, sess, e)) return "";
-  return `<div class="card info" id="swap-note"><p style="margin:0">${esc(u.text ?? (u.permanent ? `Swapped for ${u.toName} — from now on.` : `Swapped for ${u.toName} — just for today.`))}</p>
+  // W334: an automatic swap says how it chose — the closest match that fits; a lift the lifter picked needs no reason.
+  const how = u.picked ? "" : " — the closest match that fits";
+  return `<div class="card info" id="swap-note"><p style="margin:0">${esc(u.text ?? (u.permanent ? `Swapped for ${u.toName}${how}, from now on.` : `Swapped for ${u.toName}${how}, just for today.`))}</p>
     <button class="btn ghost inline" id="swap-undo" style="margin-top:6px">Undo</button></div>`;
 }
 // Replace the slot holding `expect` with `row`; returns replaceSlot's reason on refusal.
@@ -3533,7 +3788,7 @@ async function renderCantDo() {
     $("#cd-back").onclick = () => renderPlayer(0);
     if ($("#cd-later")) $("#cd-later").onclick = deferCurrentExercise;
   };
-  const note = (msg) => { app.innerHTML = `<h1>Can't do ${esc(cur.name)}?</h1><div class="card"><p>${esc(msg)}</p></div>${tail}`; wireTail(); };
+  const note = (msg) => { app.innerHTML = `<h1>Change ${esc(cur.name)}?</h1><div class="card"><p>${esc(msg)}</p></div>${tail}`; wireTail(); };
   const offline = () => note(`📴 You're offline — I can't fetch a replacement right now. Keep going with ${cur.name}${canLater ? ", or do it later and come back to it" : ""}.`);
   const refused = (reason, name) => reason === "duplicate" ? `${name} is already in today's workout.`
     : reason === "started" ? `You've already logged a set of ${cur.name} — finish it, or do it later.`
@@ -3548,7 +3803,7 @@ async function renderCantDo() {
     if (!alts.length) return note(`${lead ? lead + " " : ""}Nothing else trains the same muscle with your equipment today — keep ${cur.name}${canLater ? ", or do it later" : ""}.`);
     app.innerHTML = `<h1>Pick a replacement</h1>${lead ? `<div class="card info"><p style="margin:0">${esc(lead)}</p></div>` : ""}
       <p class="muted">Best first — same sets and reps as ${esc(cur.name)}. ${sess.learningPaused ? "Just for today — your edited plan stays as you made it." : `Just for today — but if you keep picking something over ${esc(cur.name)}, I'll take the hint and swap it in your plan wherever something as good fits.`}</p>
-      ${alts.map((a) => `<button class="choice" data-pick="${esc(a.id)}">${esc(a.name)} <span class="muted">${esc(friendlyMuscles(a.primary_muscles))}</span></button>`).join("")}
+      ${alts.map((a, i) => `<button class="choice" data-pick="${esc(a.id)}">${i === 0 ? "⭐ " : ""}${esc(a.name)}<span class="sub muted">${i === 0 ? "Best match · " : ""}${esc(swapReason(a.tier, a.mechanic))} · ${esc(friendlyMuscles(a.primary_muscles))}</span></button>`).join("")}
       ${tail}`;
     wireTail();
     app.querySelectorAll("[data-pick]").forEach((b) => b.onclick = async () => {
@@ -3563,10 +3818,13 @@ async function renderCantDo() {
     });
   };
 
-  app.innerHTML = `<h1>Can't do ${esc(cur.name)}?</h1>
+  // W331: the ONE "Change exercise" door — tired first (Burst 6's one-tap flow is now two: door, then this), the lifter's
+  // own pick next when there is one (W326), then the reasons a swap can be for.
+  app.innerHTML = `<h1>Change ${esc(cur.name)}?</h1>
     <p class="muted">Tell me why and I'll sort it.</p>
+    ${pickOffer(sess) ? `<button class="choice reason" id="cd-your-pick">⇄ Do ${esc(cur.your_pick.name)} instead<span class="sub muted">Your usual pick for this slot — just for today</span></button>` : ""}
     ${cur.tired ? "" : `<button class="choice reason" id="cd-tired">🥱 I'm too tired for this one<span class="sub muted">Something easier, just for today${tiredDose(cur) < cur.sets ? " — fewer sets" : ""}</span></button>`}
-    <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">Swap it from now on — your plan won't use it again</span></button>
+    <button class="choice reason" id="cd-machine">🚫 No machine for this<span class="sub muted">${sess.setupName ? `Swap it whenever you train at ${esc(sess.setupName)} — bring it back in Settings any time` : "Swap it from now on — bring it back on the Plan tab any time"}</span></button>
     <button class="choice reason" id="cd-busy">⏳ It's busy right now<span class="sub muted">Swap it just for today</span></button>
     <button class="choice reason" id="cd-dislike">👎 Just not for me<span class="sub muted">Swap it for one as good — bring it back any time</span></button>
     <button class="choice reason" id="cd-hurt">😖 It hurts<span class="sub muted">Tell me where — I'll keep those movements out of your plan</span></button>
@@ -3574,6 +3832,7 @@ async function renderCantDo() {
     ${tail}`;
   wireTail();
   if ($("#cd-tired")) $("#cd-tired").onclick = () => tiredSwap(); // a slot already made easier isn't offered it again (review K5)
+  if ($("#cd-your-pick")) $("#cd-your-pick").onclick = () => yourPickSwap();
   $("#cd-machine").onclick = async () => {
     lock("Finding the best replacement…");
     let r; try { r = await post({ scope: "always" }); } catch { return stillHere() ? offline() : undefined; }
@@ -3596,7 +3855,7 @@ async function renderCantDo() {
         planLift: planLiftAfterPermanent(cur, r), // …else today's lift stands in for the plan's new lift (round 9)
         // Today's lift IS the plan's replacement: say it once; otherwise name today's too.
         text: r.replaced_by === r.today.id
-          ? ((r.dropped ?? []).length ? `${planLine}.` : `Swapped for ${r.today.name} — from now on.`)
+          ? ((r.dropped ?? []).length ? `${planLine}.` : `Swapped for ${r.today.name} — the closest match that fits, from now on. Bring ${cur.name} back on the Plan tab if that changes.`)
           : `${planLine}. ${r.today.name} for today.` });
     // The plan changed either way; only today's live slot can refuse (e.g. the new
     // lift is already in this workout) — then today needs its own pick.
@@ -3695,6 +3954,7 @@ async function finish() {
   // before the in-progress copy is dropped: the lift names live only on it.
   const local = localReadout(payload.targets, payload.sets);
   const names = Object.fromEntries(sess.ex.map((x) => [x.exercise, x.name]));
+  const endReason = [...(payload.fade_marks ?? [])].reverse().find((m) => m.kind === "early" || m.kind === "skip")?.reason ?? null; // W332: already asked
   const beginner = !!sess.beginner;
   if (res.queued) { try { localStorage.setItem(RKEY, JSON.stringify({ session_id, name: sess.name, targets: payload.targets, sets: payload.sets, names, beginner })); } catch {} }
   // Accepted or safely queued — now it's safe to drop the in-progress copy.
@@ -3703,7 +3963,7 @@ async function finish() {
   // don't re-offer it when Recap routes back to Today.
   try { localStorage.setItem("hb_ck_dismissed", localDay()); } catch {}
   say(res.ok ? "Workout saved." : "Offline — workout saved on this phone and will sync.");
-  renderRecap(res.ok ? { ...res.data, session_id, local, names, beginner, loading: true } : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."], queued: true, local, names, beginner });
+  renderRecap(res.ok ? { ...res.data, session_id, local, names, beginner, endReason, loading: true } : { wins: ["📴 You're offline — workout saved on this phone. It'll sync automatically when you're back online."], queued: true, local, names, beginner });
   // What it MEANS is asked of the read-out's own door once the save has landed — never computed
   // on the save path (W282 review) — and this newer workout's recap retires any older pending one.
   if (res.ok) { clearPendingReadout(); fillReadout(session_id, { local, names, beginner }); }
@@ -3762,7 +4022,7 @@ function readoutCardHtml({ local, ro, names = {}, beginner = false, queued = fal
     ${section("👀 Worth a look", lists.watch)}
     ${section("➡️ Next time", nextShown.map((x) => x.html), true)}
     ${section("📅 This block", ro?.block)}
-    ${section("🔭 If your block ended today", ro?.next_block)}
+    ${nerdOn() ? section("🔭 If your block ended today", ro?.next_block) : "" /* W331: a forecast for the curious — Nerd Mode */}
     ${ro?.bodyweight ? `<p class="muted" style="margin:10px 0 0">⚖️ ${esc(ro.bodyweight)}</p>` : ""}
     ${!ro && queued ? `<p class="muted" style="margin:10px 0 0">📴 Next time and your block read-out arrive once this syncs — I'll put them on Today.</p>` : ""}
     ${!ro && loading ? `<p class="muted" id="ro-loading" style="margin:10px 0 0">Reading what this means for your next sessions…</p>` : ""}
@@ -3817,8 +4077,10 @@ function renderRecap(recap) {
     : "";
   // "How did your last few sets feel?" (W314 — the learned ceiling's own evidence): optional, one tap, only after a long
   // enough workout that's been saved (it's stored on the workout).
-  const feelRow = recap.session_id && (recap.local?.done ?? 0) >= FEEL_MIN_SETS
-    ? `<div class="card" id="feel"><p>How did your last few sets feel? <span class="muted">Optional — it helps me learn how long your workouts should be.</span></p>
+  // W332: not after the finish sheet got an answer to why it ended (that IS the answer); if that question was skipped,
+  // this one still asks — the one fatigue signal left. And it says what it's for.
+  const feelRow = recap.session_id && !recap.endReason && (recap.local?.done ?? 0) >= FEEL_MIN_SETS
+    ? `<div class="card" id="feel"><p>Did you run out of steam near the end? <span class="muted">Optional — it helps me size your workouts.</span></p>
       <div class="row" style="gap:8px;border:0;padding:0">${[["strong", "💪 Strong"], ["fading", "😮‍💨 Fading"], ["empty", "🪫 Empty"]].map(([k, l]) => `<button class="btn ghost inline" data-feel="${k}" style="margin:0">${l}</button>`).join("")}</div></div>` : "";
   const title = recap.day_number ? `Session ${recap.day_number} done 💪` : "Workout done 💪";
   // A number banked wrong is fixable after the workout too (W274): straight into this
@@ -4253,14 +4515,18 @@ async function renderHistory() {
   if (historyEdit) {
     const sess = list.find((x) => x.session_id === historyEdit);
     if (!sess) { historyEdit = null; return renderHistory(); }
-    const rows = (sess.sets ?? []).map((set, i) => `<div class="row">
-      <div style="flex:1"><b>${esc(set.name || set.exercise)}</b>${(set.set_type ?? "work") === "warmup" ? ' <span class="chip">warm-up</span>' : ""}</div>
+    // W333: a set logged on the wrong lift is fixed here too — moved to another lift in this workout, or removed.
+    const lifts = [...new Map((sess.sets ?? []).map((x) => [x.exercise, x.name || x.exercise])).entries()];
+    const exPick = (set, i) => lifts.length > 1 ? `<select data-ex="${i}" aria-label="lift for set ${i + 1}" style="max-width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:8px;font-size:1rem">${lifts.map(([id, nm]) => `<option value="${esc(id)}"${id === set.exercise ? " selected" : ""}>${esc(nm)}</option>`).join("")}</select>` : `<b>${esc(set.name || set.exercise)}</b>`;
+    const rows = (sess.sets ?? []).map((set, i) => `<div class="row" data-row="${i}">
+      <div style="flex:1;min-width:0">${exPick(set, i)}${(set.set_type ?? "work") === "warmup" ? ' <span class="chip">warm-up</span>' : ""}</div>
       <input data-w="${i}" type="text" inputmode="decimal" value="${esc(editDisplay(set.weight_kg, unitFor(set.exercise)))}" aria-label="weight for set ${i + 1}"
         style="width:5.5rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
       <span class="muted">${unitLabelFor(set.exercise)} ×</span>
       <input data-reps="${i}" type="number" step="1" inputmode="numeric" value="${set.reps}" aria-label="reps for set ${i + 1}${repsEstimated(set) ? ", estimated" : ""}"
         style="width:4rem;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:1rem">
       ${repsEstimated(set) ? `<span class="muted" aria-hidden="true" title="an estimate">~</span>` : ""}
+      <button class="iconbtn" data-rm="${i}" aria-pressed="false" aria-label="Remove set ${i + 1}" title="Remove this set">🗑</button>
     </div>`).join("");
     const quarantined = !!sess.time_quarantine;
     app.innerHTML = `<h1>Fix this workout</h1>
@@ -4270,6 +4536,14 @@ async function renderHistory() {
       <button class="btn" id="hsave">Save corrections</button>
       <button class="btn ghost" id="hcancel">Cancel</button>`;
     $("#hcancel").onclick = () => { historyEdit = null; renderHistory(); };
+    const removed = new Set();
+    app.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => {
+      const i = +b.dataset.rm, on = !removed.has(i);
+      if (on) removed.add(i); else removed.delete(i);
+      b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "↩" : "🗑"; b.title = on ? "Keep this set" : "Remove this set";
+      const row = app.querySelector(`[data-row="${i}"]`); if (row) row.style.opacity = on ? ".4" : "";
+      say(on ? `Set ${i + 1} will be removed when you save.` : `Set ${i + 1} kept.`);
+    });
     $("#hsave").onclick = async () => {
       // Send the sets back WHOLE, preserving every field the server gave us
       // (set_type, rir, deload, completed_at) — the route re-normalises, so an edit
@@ -4279,8 +4553,15 @@ async function renderHistory() {
       // weight in the workout (22.5 lb came back as 25 lb). The display is exact now, and
       // an untouched field keeps its stored value byte for byte.
       // …and a CHANGED count is a real one: its estimate flag goes (historyEditSet, W307). `name` is display-only.
-      const sets = (sess.sets ?? []).map((set, i) => historyEditSet(set, { wText: app.querySelector(`[data-w="${i}"]`)?.value ?? "",
-        rText: app.querySelector(`[data-reps="${i}"]`)?.value ?? "", unit: unitFor(set.exercise) }));
+      const sets = (sess.sets ?? []).map((set, i) => {
+        if (removed.has(i)) return null; // W333: removed
+        const out = historyEditSet(set, { wText: app.querySelector(`[data-w="${i}"]`)?.value ?? "", rText: app.querySelector(`[data-reps="${i}"]`)?.value ?? "", unit: unitFor(set.exercise) });
+        const to = app.querySelector(`[data-ex="${i}"]`)?.value;
+        return to && lifts.some(([id]) => id === to) ? { ...out, exercise: to } : out; // W333: moved to the lift it really was
+      }).filter(Boolean);
+      // Every set removed is the whole workout gone — that's "Take it back" on the list (recoverable, with its sets),
+      // never an empty workout saved as "corrected" (review).
+      if (!sets.length) { say("That removes the whole workout."); alertBar("Removing every set would take back the whole workout — keep at least one, or use “Take it back” on the workout list."); return; }
       const res = await api("/api/session/update", { method: "POST", body: JSON.stringify({ user_id: uid, session_id: sess.session_id, sets }) });
       if (res.error) { say("Couldn't save that — try again."); return; }
       historyEdit = null;
@@ -5185,8 +5466,8 @@ function renderMe() {
       <button class="btn secondary" id="settings">View &amp; change my answers</button></div>
     <div class="card"><p class="muted">After-set effort question (reps left in the tank)</p>
       <p>After each set, one optional tap: how many more reps you had in you. It's how the coach knows a weight has gotten too easy — skipping a set never counts against you.</p>
-      <p class="muted">${localStorage.getItem("hb_rir") === "1" ? "Always on." : localStorage.getItem("hb_rir") === "0" ? "Off." : "Auto — the chips appear once you're past the beginner stage."}</p>
-      <button class="btn secondary" id="rirtoggle">${localStorage.getItem("hb_rir") === "1" ? "Always on — tap to switch off" : localStorage.getItem("hb_rir") === "0" ? "Off — tap to switch to auto" : "Auto — tap to force always on"}</button></div>
+      <p class="muted">${rirOn() ? "On." : "Off."}</p>
+      <button class="btn secondary" id="rirtoggle">${rirOn() ? "On — tap to switch off" : "Off — tap to switch on"}</button></div>
     <div class="card"><p class="muted">Units</p>
       <p>Weights show in <b>${unitPref() === "lb" ? "pounds (lb)" : "kilograms (kg)"}</b>.</p>
       <button class="btn secondary" id="unittoggle">Switch to ${unitPref() === "lb" ? "kg" : "lb"}</button></div>
@@ -5203,7 +5484,7 @@ function renderMe() {
   // Tri-state cycle: Auto (unset) → Always on ("1") → Off ("0") → Auto. The Auto
   // default keys off training status, so a graduating beginner inherits the chips
   // with nothing to configure (minimal-customization: no mandatory setting).
-  $("#rirtoggle").onclick = () => { const v = localStorage.getItem("hb_rir"); if (v === "1") localStorage.setItem("hb_rir", "0"); else if (v === "0") localStorage.removeItem("hb_rir"); else localStorage.setItem("hb_rir", "1"); renderMe(); };
+  $("#rirtoggle").onclick = () => { try { if (rirOn()) localStorage.setItem("hb_rir", "0"); else localStorage.removeItem("hb_rir"); } catch {} renderMe(); };
   $("#unittoggle").onclick = async () => {
     // Writes BOTH sides. This used to set localStorage only, so `profile.units`
     // drifted from what the user actually saw — harmless while the wizard also

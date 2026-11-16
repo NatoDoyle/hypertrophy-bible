@@ -48,8 +48,8 @@ import {
   loadExerciseIndex,
   loadMuscleIndex,
 } from "./derive-metrics.mjs";
-import { commitmentForDay, plannedDayState, effectiveCommitment, weekFacts, commitmentStood } from "./derive-core.mjs";
-import { restSeconds, restTier, repsAtBand, paceAggregate, PACE_MAX_GAP_S, sessionMinutes, SESSION_PACE_DEFAULTS, itemsFromLog, paceModelCheck } from "./derive-core.mjs";
+import { commitmentForDay, plannedDayState, effectiveCommitment, weekFacts, commitmentStood, weekAbsorbed } from "./derive-core.mjs";
+import { restSeconds, restTier, repsAtBand, paceAggregate, PACE_MAX_GAP_S, sessionMinutes, SESSION_PACE_DEFAULTS, SET_WORK_S, SET_REST_S, setsInMinutes, itemsFromLog, paceModelCheck } from "./derive-core.mjs";
 import { readFileSync as readKbFile } from "node:fs";
 
 let passed = 0;
@@ -1625,10 +1625,24 @@ check("#pace paceAggregate: nothing usable → honest nulls, never a guessed num
   assert.equal(PACE_MAX_GAP_S, 900, "the player's own longest rest (600 s) plus a long set still counts; past 15 minutes is an interruption");
 });
 
-// W302 (considerations iteration, Burst 8 — "60 minutes means 60 minutes"): what a served day takes, from the same
-// three rest tiers the player's timer uses, calibrated against real logged workouts (W299's pace, 2026-11-03).
-check("#session-time the defaults are the measured pace, named", () => {
-  assert.deepEqual({ ...SESSION_PACE_DEFAULTS }, { heavy: 191, moderate: 187, isolation: 119, transition: 159, lead: 353, work: 40, round_rest: 60 });
+// W302 (Burst 8 — "60 minutes means 60 minutes"): what a served day takes. W329 (owner, considerations 2026-11): the
+// DEFAULT is 1 min of work + 3 min of rest a set — "a 16 set workout will theoretically last 64 minutes".
+check("#session-time the defaults are the owner's rule: every set 1 min of work + 3 min of rest", () => {
+  assert.deepEqual({ ...SESSION_PACE_DEFAULTS }, { heavy: 240, moderate: 240, isolation: 240, transition: 240, lead: 240, work: 60, round_rest: 180 });
+  assert.equal(SET_WORK_S + SET_REST_S, 240);
+});
+check("#W329 the owner's example: 16 straight sets are 64 minutes, however they're spread across lifts", () => {
+  const exById = new Map([["a", { mechanic: "compound", equipment: "barbell", cns_cost: "high" }], ["b", { mechanic: "compound", equipment: "machine", cns_cost: "moderate" }], ["c", { mechanic: "isolation", equipment: "cable", cns_cost: "low" }]]);
+  assert.equal(sessionMinutes([{ exercise: "a", sets: 4 }, { exercise: "b", sets: 4 }, { exercise: "c", sets: 4 }, { exercise: "c2", sets: 4 }], exById), 64);
+  assert.equal(sessionMinutes([{ exercise: "a", sets: 16 }], exById), 64);
+});
+check("#W329 setsInMinutes: minutes ÷ 4 by default, never rounded past the time; the lifter's own pace sizes it once learned", () => {
+  assert.equal(setsInMinutes(60), 15);
+  assert.equal(setsInMinutes(45), 11, "45 ÷ 4 = 11.25 → 11 sets (12 would be 48 min)");
+  assert.equal(setsInMinutes(64), 16);
+  assert.equal(setsInMinutes(60, { heavy: 180, moderate: 180, isolation: 180 }), 20, "a 3-minute-a-set lifter fits 20");
+  assert.equal(setsInMinutes(60, { isolation: 120 }), 18, "a partial pace replaces only its own tier: avg gap 200 s");
+  assert.equal(setsInMinutes(60, { heavy: -5, moderate: "x" }), 15, "junk never shrinks or grows the count");
 });
 check("#session-time sessionMinutes: the lead, (n − 1) gaps per lift at its tier, one change per further lift", () => {
   const exById = new Map([
@@ -1638,15 +1652,15 @@ check("#session-time sessionMinutes: the lead, (n − 1) gaps per lift at its ti
     ["split", { id: "split", mechanic: "compound", equipment: "dumbbell", cns_cost: "moderate", unilateral: true }],
     ["raise", { id: "raise", mechanic: "isolation", equipment: "dumbbell", cns_cost: "low" }],
   ]);
-  // 353 + 3×191 + 159 + 2×187 + 159 + 1×119 = 1737 s
-  assert.equal(sessionMinutes([{ exercise: "squat", sets: 4 }, { exercise: "press", sets: 3 }, { exercise: "curl", sets: 2 }], exById), 29);
-  // a unilateral lift's every gap carries the second side's work: 353 + 2×(187 + 40) = 807 s
-  assert.equal(sessionMinutes([{ exercise: "split", sets: 3 }], exById), 13.5);
-  // a superset pair is ONE station: (2 rounds − 1) × (60 + 40 + 40), then the longer lift's extra set at its own gap
-  // (119): 353 + 3×191 + 159 + 140 + 119 = 1344 s
-  assert.equal(sessionMinutes([{ exercise: "squat", sets: 4 }, { exercise: "curl", sets: 3, superset_with: "raise" }, { exercise: "raise", sets: 2, superset_with: "curl" }], exById), 22.4);
-  // the user's own pace replaces only the numbers it has: 353 + 2×150 = 653 s
-  assert.equal(sessionMinutes([{ exercise: "press", sets: 3 }], exById, { moderate: 150 }), 10.9);
+  // 9 straight sets × 4 min: 240 + 3×240 + 240 + 2×240 + 240 + 1×240 = 2160 s
+  assert.equal(sessionMinutes([{ exercise: "squat", sets: 4 }, { exercise: "press", sets: 3 }, { exercise: "curl", sets: 2 }], exById), 36);
+  // a unilateral lift's every gap carries the second side's work (+1 min): 240 + 2×(240 + 60) = 840 s
+  assert.equal(sessionMinutes([{ exercise: "split", sets: 3 }], exById), 14);
+  // a superset pair is ONE station: (2 rounds − 1) × (180 + 60 + 60), then the longer lift's extra set at its own gap
+  // (240): 240 + 3×240 + 240 + 300 + 240 = 1740 s — 29 min for 9 sets, pairing still saves time
+  assert.equal(sessionMinutes([{ exercise: "squat", sets: 4 }, { exercise: "curl", sets: 3, superset_with: "raise" }, { exercise: "raise", sets: 2, superset_with: "curl" }], exById), 29);
+  // the user's own pace replaces only the numbers it has: 240 + 2×150 = 540 s
+  assert.equal(sessionMinutes([{ exercise: "press", sets: 3 }], exById, { moderate: 150 }), 9);
   // a lift the KB doesn't know rests like the app's long-standing default (moderate); an empty day is 0
   assert.equal(sessionMinutes([{ exercise: "mystery", sets: 2 }], exById), sessionMinutes([{ exercise: "press", sets: 2 }], exById));
   assert.equal(sessionMinutes([], exById), 0);
@@ -1661,9 +1675,9 @@ check("#session-time paceModelCheck: the model's minutes for each real workout's
   const exById = new Map([["squat", { mechanic: "compound", equipment: "barbell", cns_cost: "high" }], ["curl", { mechanic: "isolation", equipment: "cable", cns_cost: "low" }]]);
   const t0 = Date.parse("2026-10-01T17:00:00.000Z"), at = (s) => new Date(t0 + s * 1000).toISOString();
   const w = (exercise, s) => ({ exercise, set_type: "work", completed_at: at(s) });
-  // laid out at exactly the default pace: lead 353, two squat gaps of 191, a change of 159, a curl gap of 119 → 1013 s
-  const exact = { date: at(0), sets: [w("squat", 353), w("squat", 544), w("squat", 735), w("curl", 894), w("curl", 1013)] };
-  const slow = { date: at(0), sets: [w("squat", 353), w("squat", 544), w("squat", 735), w("curl", 894), w("curl", 2026)] }; // took twice as long
+  // laid out at exactly the default pace: every set 240 s (the lead, two squat gaps, a change, a curl gap) → 1200 s
+  const exact = { date: at(0), sets: [w("squat", 240), w("squat", 480), w("squat", 720), w("curl", 960), w("curl", 1200)] };
+  const slow = { date: at(0), sets: [w("squat", 240), w("squat", 480), w("squat", 720), w("curl", 960), w("curl", 2400)] }; // took twice as long
   assert.deepEqual(paceModelCheck([exact], (id) => exById.get(id)), { median_abs_error_pct: 0, n: 1 });
   assert.deepEqual(paceModelCheck([exact, slow], (id) => exById.get(id)), { median_abs_error_pct: 25, n: 2 }, "errors 0% and 50% of the real duration");
   assert.deepEqual(paceModelCheck([{ date: null, sets: exact.sets }], (id) => exById.get(id)), { median_abs_error_pct: null, n: 0 }, "no start, no check");
@@ -1711,6 +1725,65 @@ check("#session-time paceModelCheck: the model's minutes for each real workout's
   check("#est an estimated set still counts as a set done: weekly hard-set volume includes it (completion counts include estimated sets)", () => {
     const v = D.perMuscleWeeklyVolume([{ date: "2026-10-06", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 8, ...est, rir_est: 2 }] }], ix);
     assert.equal(Object.values(v)[0].chest, 1);
+  });
+}
+
+// ---- W328: training on a rest day moves the rest day (#week-absorb) -----------------
+// Owner (2026-11): "It was supposed to be a rest day, but I … did the second upper workout
+// … Instead of programming tomorrow as a rest day, it now is suggesting my second lower
+// workout … making me do five sessions for the week, even though I only do four."
+{
+  const plan = { week: "2026-W46", days: ["mon", "tue", "thu", "fri"] }; // Mon 2026-11-09
+  const owner = { sessionDays: ["2026-11-09", "2026-11-10", "2026-11-11"], restDays: [] };
+  check("#week-absorb the owner's week: an off-plan Wednesday makes Thursday a rest day, Friday trains", () => {
+    const thu = plannedDayState(plan, "2026-11-12", owner);
+    assert.equal(thu.planned_today, false);
+    assert.deepEqual(thu.absorbed_today, { by: "2026-11-11", by_day: "wed" });
+    assert.deepEqual(thu.next, { day: "fri", date: "2026-11-13" });
+    assert.equal(thu.missed, null, "an absorbed day is never 'missed'");
+    // Seen from Wednesday evening (after training): Thursday is already off, next is Friday.
+    const wed = plannedDayState(plan, "2026-11-11", owner);
+    assert.deepEqual(wed.next, { day: "fri", date: "2026-11-13" });
+    const fri = plannedDayState(plan, "2026-11-13", owner);
+    assert.equal(fri.planned_today, true);
+    assert.equal(fri.missed, null);
+    assert.equal(fri.absorbed_today, null);
+  });
+  check("#week-absorb a catch-up absorbs nothing: training Wednesday for a missed Tuesday", () => {
+    const st = { sessionDays: ["2026-11-09", "2026-11-11"], restDays: [] };
+    assert.deepEqual(weekAbsorbed(commitmentForDay(plan, "2026-11-12"), "2026-11-12", st), []);
+    assert.equal(plannedDayState(plan, "2026-11-12", st).planned_today, true);
+  });
+  check("#week-absorb a rest-marked committed day spends the credit without absorbing another", () => {
+    const st = { sessionDays: ["2026-11-09", "2026-11-10", "2026-11-11"], restDays: ["2026-11-12"] };
+    assert.deepEqual(weekAbsorbed(commitmentForDay(plan, "2026-11-12"), "2026-11-12", st), []);
+    assert.equal(plannedDayState(plan, "2026-11-13", st).planned_today, true);
+  });
+  check("#week-absorb two off-plan days absorb two committed days, in order", () => {
+    // A Thu/Fri plan; trained Tue and Wed instead: both committed days are now rest days.
+    const b = weekAbsorbed({ days: ["thu", "fri"] }, "2026-11-11", { sessionDays: ["2026-11-10", "2026-11-11"], restDays: [] });
+    assert.deepEqual(b.map((x) => [x.date, x.by]), [["2026-11-12", "2026-11-10"], ["2026-11-13", "2026-11-11"]]);
+  });
+  check("#week-absorb never crosses the ISO week: Sunday's off-plan session doesn't absorb next Monday", () => {
+    const sun = { sessionDays: ["2026-11-15"], restDays: [] };
+    const mon = plannedDayState({ week: "2026-W46", days: ["mon", "wed"] }, "2026-11-16", sun);
+    assert.equal(mon.planned_today, true);
+    assert.equal(mon.absorbed_today, null);
+  });
+  check("#week-absorb a plan made mid-week makes no claim on — and earns no credit from — the days before it", () => {
+    const made = { week: "2026-W46", set_on: "2026-11-12", days: ["mon", "fri"] };
+    const st = { sessionDays: ["2026-11-10"], restDays: [] }; // Tuesday, before the plan existed
+    assert.equal(plannedDayState(made, "2026-11-13", st).planned_today, true);
+    assert.deepEqual(weekAbsorbed(commitmentForDay(made, "2026-11-13"), "2026-11-13", st), []);
+  });
+  check("#week-absorb a double day on a committed day is one day, not a credit", () => {
+    const st = { sessionDays: ["2026-11-09", "2026-11-09"], restDays: [] };
+    assert.equal(plannedDayState(plan, "2026-11-10", st).planned_today, true);
+  });
+  check("#week-absorb weekFacts marks the absorbed day (the strip's fact) and nothing else changes shape", () => {
+    const f = weekFacts(plan, "2026-11-12", { trained: owner.sessionDays.map((date, i) => ({ date, name: ["Upper A", "Lower A", "Upper B"][i] })), restDays: [] });
+    assert.deepEqual(f.days.filter((d) => d.absorbed).map((d) => d.date), ["2026-11-12"]);
+    assert.equal("absorbed" in f.days[4], false, "a day not absorbed carries no key (byte-identical otherwise)");
   });
 }
 

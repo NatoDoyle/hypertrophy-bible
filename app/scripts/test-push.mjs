@@ -10,6 +10,7 @@ import { buildVapidAuth, sendEmptyPush, sendPush, shouldPush, shouldPushForCommi
 import { decryptPushPayload, bytesToB64u } from "../src/push-encrypt.mjs";
 import { runScheduled } from "../src/scheduled.mjs";
 import { challengeSlots } from "../src/adherence.mjs";
+import { quietToday } from "../src/nudge.mjs";
 import { isoWeekKey, isoWeekKeyLocal, weekDayKey } from "../../tools/derive-core.mjs";
 
 // A fake browser subscription: a real UA-generated ECDH keypair + a random auth
@@ -120,6 +121,19 @@ const TODAY_KEY = weekDayKey(NOW);
 ok("today is a committed day, never trained -> push", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: null, now: NOW }) === true);
 ok("today is a committed day, already trained TODAY -> no push", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: NOW, now: NOW }) === false);
 ok("today is a committed day, trained YESTERDAY (not today) -> still push", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: daysAgo(1), now: NOW }) === true);
+// W328 (owner: skipped a rest day, then was asked for a 5th session): an OFF-plan session
+// earlier this week pays for the next committed day — that day is a rest day, no push.
+{
+  const yKey = new Date(daysAgo(1)).toISOString().slice(0, 10), tKey = new Date(NOW).toISOString().slice(0, 10);
+  ok("#W328 an off-plan session yesterday absorbs today's committed day -> no commitment push",
+    shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [TODAY_KEY] }, lastSessionAt: daysAgo(1), now: NOW, sessionDays: [yKey] }) === false);
+  ok("#W328 …but an ON-plan session yesterday absorbs nothing -> still push",
+    shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: [weekDayKey(daysAgo(1)), TODAY_KEY] }, lastSessionAt: daysAgo(1), now: NOW, sessionDays: [yKey] }) === true);
+  ok("#W328 quietToday reads the same absorbed day (one rule for push and nudge)",
+    quietToday({ profile: { commitment: { week: THIS_WEEK, days: [TODAY_KEY] } } }, NOW, [yKey]).quiet === true
+    && quietToday({ profile: { commitment: { week: THIS_WEEK, days: [TODAY_KEY] } } }, NOW, []).quiet === false
+    && tKey !== yKey);
+}
 ok("today is NOT a committed day -> no push", shouldPushForCommitment({ commitment: { week: THIS_WEEK, days: ["not-a-real-day-that-matches-today"] }, lastSessionAt: null, now: NOW }) === false);
 ok("no commitment set -> no push", shouldPushForCommitment({ commitment: null, lastSessionAt: null, now: NOW }) === false);
 ok("an ancient (2020) plan with no training never fires — since W271 that is the lapse cap, not staleness (days now carry forward)", shouldPushForCommitment({ commitment: { week: "2020-W01", days: [TODAY_KEY] }, lastSessionAt: null, now: NOW }) === false);
@@ -686,7 +700,9 @@ try {
   await store.saveUser("pausedu", { profile: {}, paused: { from: daysAgo(1) } });
   // Trained YESTERDAY (same as "fresh" — shouldPush alone would stay silent), but
   // committed to training TODAY: the commitment path must push anyway.
-  await store.saveUser("committed", { profile: { commitment: { week: THIS_WEEK, days: [TODAY_KEY] } } });
+  // (Yesterday is on the plan too: since W328 an OFF-plan session yesterday would pay for
+  // today — the week's one committed session done — and rightly silence this push.)
+  await store.saveUser("committed", { profile: { commitment: { week: THIS_WEEK, days: [weekDayKey(NOW - 86400e3), TODAY_KEY] } } });
   await store.addSession("lapsed", { session_id: "l1", date: daysAgo(4), sets: [] });
   await store.addSession("fresh", { session_id: "f1", date: daysAgo(1), sets: [] });
   await store.addSession("pausedu", { session_id: "p1", date: daysAgo(4), sets: [] });

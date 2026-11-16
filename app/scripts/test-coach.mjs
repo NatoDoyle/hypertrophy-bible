@@ -2521,6 +2521,34 @@ check("#effort-top precedence: before the RIR surplus, before W280's shortfall, 
     [150, "You hit the top of the range last time, but closer to failure than the plan's 1–2 reps in reserve — same weight."], "a taper: never 'you'd normally add load here', and no ask the taper won't honour");
   assert.deepEqual(kgNote(lpAt("1-2", "1-2", [lp(150, 10, 4), lp(150, 10, 4), lp(150, 10, 4)])), [155, "You left ~4 reps in reserve last time — add 5 kg."]);
 });
+// W330 (owner, considerations 2026-11: "The app doesn't seem to be aware of the RIR. This affects its ability to
+// effectively suggest more appropriate weights"): "4+" earns the bump under a compound band ("1-3"), and the bump is
+// SIZED by the set's capacity (reps + RIR → the load that puts the range's top at the band's near edge), capped at two
+// increments or ~10% — one increment for a beginner.
+{
+  const lpW = (sets, { prescribed = "1-3", beginner = false, holdLoad = false } = {}) =>
+    suggestWeight([withTargets(lpT("1-3"), ...sets)], "leg-press", "6-10", undefined, null, prescribed, holdLoad, { beginner });
+  check("#W330 '4+' under '1-3' (6-10): 3×10 @4 at 150 is sized past one step (capacity 14 → ~161), capped at two (155)", () => {
+    const r = lpW([lp(150, 10, 4), lp(150, 10, 4), lp(150, 10, 4)]);
+    assert.equal(r.suggested_kg, 155);
+    assert.equal(r.note, "You left ~4 reps in reserve last time — add 5 kg.");
+    assert.equal(r.rir_bump, true);
+  });
+  check("#W330 …8 @4 has less to spare: one step; 3 in reserve is the band's top — the weight holds for a rep or two more", () => {
+    assert.equal(lpW([lp(150, 8, 4), lp(150, 8, 4), lp(150, 8, 4)]).suggested_kg, 152.5);
+    const held = lpW([lp(150, 8, 3), lp(150, 8, 3), lp(150, 8, 3)]);
+    assert.equal(held.suggested_kg, 150);
+    assert.ok(!held.rir_bump);
+  });
+  check("#W330 a beginner's '4+' still moves the weight — one increment, never the sized step", () => {
+    assert.equal(lpW([lp(150, 10, 4), lp(150, 10, 4), lp(150, 10, 4)], { beginner: true }).suggested_kg, 152.5);
+  });
+  check("#W330 the bump never jumps the range: a light 6 @4 steps once, and every guard before it still holds (taper, a set at failure)", () => {
+    assert.equal(lpW([lp(150, 6, 4), lp(150, 6, 4), lp(150, 6, 4)]).suggested_kg, 152.5);
+    assert.equal(lpW([lp(150, 10, 4), lp(150, 10, 4), lp(150, 10, 4)], { holdLoad: true }).suggested_kg, 150, "a taper holds");
+    assert.equal(lpW([lp(150, 10, 0), lp(150, 10, 4), lp(150, 10, 4)]).suggested_kg, 150, "one set at failure is never averaged into a bump");
+  });
+}
 check("#effort-top (review K3) the hold's ask names TODAY's band — what the next judgement uses — never a band the card no longer shows", () => {
   const x3 = [lp(150, 10, 1), lp(150, 10, 1), lp(150, 10, 1)];
   assert.equal(lpAt("2-3", "1-3", x3).note, holdA(2, 3, 1), "week 1's 2-3 met at 1; week 2's card says 1-3");

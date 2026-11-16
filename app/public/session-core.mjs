@@ -266,8 +266,22 @@ export function undoSkip(sess) {
 // undone ease or swap isn't there to read). The learned ceiling (W315) reads them. At most 20. Pure.
 const workBanked = (sess) => (sess?.logged ?? []).filter((l) => (l?.set_type ?? "work") === "work").length;
 const plannedTotal = (sess) => (sess?.ex ?? []).reduce((a, x) => a + (Number.isInteger(x?.planned_sets) ? x.planned_sets : Number(x?.sets) || 0), 0);
-export function withFade(sess, kind) {
-  return { ...sess, fadeMarks: [...(sess?.fadeMarks ?? []), { kind, at: workBanked(sess), of: plannedTotal(sess) }].slice(-20) };
+// Why a workout ended early (W332 — owner: "the options at the end of the workout are a bit ambiguous… obvious what they
+// do and then allow you to choose the reason"). Only "tired" is a fade — the learned ceiling reads it (and a mark with no
+// reason, as every mark before W332 was); the others are why, not how much you can do, and stay out of it.
+export const FADE_REASONS = Object.freeze(["tired", "time", "pain", "equipment", "interrupted"]);
+export function withFade(sess, kind, { reason = null } = {}) {
+  const why = FADE_REASONS.includes(reason) ? { reason } : {};
+  return { ...sess, fadeMarks: [...(sess?.fadeMarks ?? []), { kind, at: workBanked(sess), of: plannedTotal(sess), ...why }].slice(-20) };
+}
+// The reason, given AFTER the end was already saved (W332: the mark is written at "Save and finish", so a crash on the
+// reason screen never loses the workout): stamped on the LAST early/skip mark. Same session when there's none or the
+// reason is unknown. Pure.
+export function setFadeReason(sess, reason) {
+  if (!FADE_REASONS.includes(reason)) return sess;
+  const marks = sess?.fadeMarks ?? [], i = marks.map((m) => m?.kind === "early" || m?.kind === "skip").lastIndexOf(true);
+  if (i < 0) return sess;
+  return { ...sess, fadeMarks: marks.map((m, k) => (k === i ? { ...m, reason } : m)) };
 }
 export function dropLastFade(sess, kind) {
   const marks = sess?.fadeMarks ?? [], i = marks.map((m) => m.kind).lastIndexOf(kind);
@@ -588,7 +602,8 @@ export function nextSetHint(set, row, { aim = null, nextAim = null } = {}) {
   const short = set.reps < min && !metAim;
   const kind = short && (rir == null || rir <= 1) ? "lighter"
     : short && rir >= 2 ? (reach >= ref ? "same" : "lighter")
-    : set.reps >= max + 2 || (rir != null && rir >= top + 2 && set.reps >= min) ? "heavier"
+    // "4+" (the chips' ceiling, stored as 4) is clearly too easy under every band whose top + 2 no chip can say (W330).
+    : set.reps >= max + 2 || (rir != null && rir >= Math.min(top + 2, 4) && rir > top && set.reps >= min) ? "heavier"
     : null;
   if (!kind) return null;
   if (kind === "same") return { kind, kg: w, from_kg: w, reps: set.reps, min, max, rir, band: band ? `${band[1]}-${band[2]}` : null, target_reps: Math.max(Math.min(ref, min), Math.min(max, Math.floor(reach + 1e-9))) };
@@ -675,7 +690,7 @@ export function buildTargets(sess) {
     // trained, so a once-a-week lift swapped out today isn't "14 days off" next week.
     ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise ? { stood_in_for: x.slot_of } : {}),
     // …and why it stood in (W323): busy / pick / tired — what the plan learns preferences from (never a tired one).
-    ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise && ["busy", "pick", "tired", "picked_over", "hurt"].includes(x.swap_why) ? { swap_why: x.swap_why } : {}),
+    ...(typeof x.slot_of === "string" && x.slot_of !== x.exercise && ["busy", "pick", "tired", "picked_over", "hurt", "setup"].includes(x.swap_why) ? { swap_why: x.swap_why } : {}),
     // The per-set aims served today (W298), only when the player itself would use them (validAim) — so later
     // learning can judge a set against what it was asked, not just the range. Only the ones it SERVED: the player shows
     // aim.slice(0, sets), and a tired row's trimmed dose keeps its longer list (W301b review — the server drops a list
@@ -1009,8 +1024,8 @@ export function adjustRest(rest, delta, row) {
 // FIXING A BANKED SET (W274 — owner: "I can't fix a wrong weight/reps mid-workout"). A
 // set is corrected IN PLACE — numbers only, never the count, order, lift or set type —
 // so everything the player derives from the log (progress, the cursor, station rounds)
-// provably cannot move. Live delete/undo is refused on purpose: removing a set breaks
-// the forward-only cursor and unbalances a superset's rounds.
+// provably cannot move. (W333: a set can now be MOVED to another lift or REMOVED, under guards — moveLoggedSet /
+// removeLoggedSet below — never inside a linked superset pair, and always re-deriving the cursor from banked sets.)
 //
 // The chips for one lift carry each banked set's ABSOLUTE position in sess.logged: a
 // superset round interleaves two lifts (and warm-ups interleave too), so a position
@@ -1053,6 +1068,99 @@ export function editLoggedSet(logged, idx, patch, { exercise, completed_at, base
     return next;
   });
 }
+// WRONG LIFT (W333 — owner: "I accidentally logged a set on the wrong exercise and now I can't change the exercise").
+// W274 kept live fixes to numbers because a delete or a relabel could break the forward-only cursor and unbalance a
+// superset's rounds; both are guarded HERE instead of refused outright. A set can be MOVED to another lift in today's
+// workout, or REMOVED — never inside a linked superset pair (Unlink first: a round banks both legs, so one leg's set
+// moved away would make the next round bank a phantom on the other), never onto a lift already at its target, never
+// on a finished workout, and only while the entry is still the one the editor opened (same lift, same completed_at).
+// The cursor is re-derived from banked sets, never trusted: if the lift at the cursor is now done, it moves to the
+// next lift still owing work (then from the start — a lift BEHIND the cursor may owe again). What was keyed to the old
+// log retires: a skip's undo, a pending pick offer, pending estimates for both lifts; a PR latch only ever decays.
+// Each returns { ok, reason, sess }, the SAME sess on a refusal. Pure.
+export const nextOwedIndex = (logged, ex, from) => { const k = nextUnfinishedIndex(logged, ex, from); return k >= 0 ? k : nextUnfinishedIndex(logged, ex, -1); };
+const pairedIn = (sess, k) => { const e = sess.ex?.[k]; return k >= 0 && !!e?.superset_with && sess.ex.some((x) => x.exercise === e.superset_with); };
+// A pair still RUNNING as a station (paired rounds owed) refuses — Unlink is right there on its screen. Once its paired
+// rounds are banked the pairing has done its job (the remainder runs solo, and the Unlink button is gone — review), so a
+// move or removal UNLINKS it instead: renderPlayer then never re-enters a station a changed count would unbalance.
+const liveStation = (sess, k) => pairedIn(sess, k) && liveBlock(sess, k).length > 1;
+function unlinkSpent(ex, logged, ks) {
+  const out = ex.map((x) => ({ ...x }));
+  for (const k of ks) {
+    if (k < 0 || !out[k]?.superset_with) continue;
+    const p = out.findIndex((x) => x.exercise === out[k].superset_with);
+    if (p < 0) continue;
+    for (const j of [k, p]) { delete out[j].superset_with; delete out[j].superset_with_name; }
+  }
+  return out;
+}
+function guardEntry(sess, idx, { exercise, completed_at } = {}) {
+  if (!sess?.ex?.length || !Array.isArray(sess.logged)) return "gone";
+  if (sess.complete) return "complete";
+  const cur = sess.logged[idx];
+  if (!cur || cur.exercise !== exercise || (cur.completed_at ?? null) !== (completed_at ?? null)) return "gone";
+  if (liveStation(sess, sess.ex.findIndex((x) => x.exercise === exercise))) return "station";
+  return null;
+}
+function afterLogChange(sess, logged, ids, extra = {}) {
+  const ks = ids.map((id) => sess.ex.findIndex((x) => x.exercise === id)).filter((k) => pairedIn(sess, k));
+  const out = { ...sess, ...extra, logged, ...(ks.length ? { ex: unlinkSpent(sess.ex, logged, ks) } : {}) };
+  delete out.lastSkip; delete out.offerPick;
+  if (out.estPending) { out.estPending = { ...out.estPending }; for (const id of ids) delete out.estPending[id]; }
+  if (out.prCelebrated) {
+    out.prCelebrated = { ...out.prCelebrated };
+    for (const id of ids) { const row = out.ex.find((x) => x.exercise === id); if (!nextPrLatch(out.prCelebrated[id], logged, id, row?.pr_watch)) delete out.prCelebrated[id]; }
+  }
+  const at = out.ex[out.i];
+  if (at && loggedWorkSets(logged, at.exercise) >= at.sets) {
+    const nx = nextOwedIndex(logged, out.ex, out.i);
+    if (nx >= 0) out.i = nx;
+  }
+  out.set = out.ex[out.i] ? loggedWorkSets(logged, out.ex[out.i].exercise) : 0;
+  return out;
+}
+export function moveLoggedSet(sess, idx, toExercise, ident = {}) {
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  const bad = guardEntry(sess, idx, ident);
+  if (bad) return refuse(bad);
+  const entry = sess.logged[idx];
+  if (toExercise === entry.exercise) return refuse("same");
+  const toK = sess.ex.findIndex((x) => x.exercise === toExercise);
+  if (toK < 0) return refuse("not-in-workout");
+  if (liveStation(sess, toK)) return refuse("station");
+  const work = (entry.set_type ?? "work") === "work";
+  if (work && loggedWorkSets(sess.logged, toExercise) >= sess.ex[toK].sets) return refuse("target-done");
+  const moved = { ...entry, exercise: toExercise };
+  // The planned-easy tag follows the lift it now belongs to (a deload day, or a tired-eased slot).
+  if (sess.deload || sess.ex[toK].eased) moved.deload = true; else delete moved.deload;
+  const logged = sess.logged.map((l, k) => (k === idx ? moved : l));
+  return { ok: true, reason: null, sess: afterLogChange(sess, logged, [entry.exercise, toExercise]) };
+}
+export function removeLoggedSet(sess, idx, ident = {}) {
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  const bad = guardEntry(sess, idx, ident);
+  if (bad) return refuse(bad);
+  const entry = sess.logged[idx];
+  const logged = sess.logged.filter((_, k) => k !== idx);
+  return { ok: true, reason: null, sess: afterLogChange(sess, logged, [entry.exercise], { lastRemoved: { entry, idx } }) };
+}
+// The one Undo a removal offers (W333): the set goes back where it was — while its lift is still in the workout, not
+// paired, and still has room for it. Retired by anything else that changes the log (the next bank clears it). Pure.
+export function undoRemoveSet(sess) {
+  const refuse = (reason) => ({ ok: false, reason, sess });
+  const r = sess?.lastRemoved;
+  if (!r?.entry || sess.complete) return refuse("nothing");
+  const k = sess.ex.findIndex((x) => x.exercise === r.entry.exercise);
+  if (k < 0) return refuse("not-in-workout");
+  if (liveStation(sess, k)) return refuse("station");
+  if ((r.entry.set_type ?? "work") === "work" && loggedWorkSets(sess.logged, r.entry.exercise) >= sess.ex[k].sets) return refuse("target-done");
+  const at = Math.max(0, Math.min(sess.logged.length, r.idx));
+  const logged = [...sess.logged.slice(0, at), r.entry, ...sess.logged.slice(at)];
+  const out = afterLogChange(sess, logged, [r.entry.exercise]);
+  delete out.lastRemoved;
+  return { ok: true, reason: null, sess: out };
+}
+
 // The moved lift's cue (W306): today's weight was set for its usual place — and the next-set hint corrects after set 1,
 // said only where that hint can fire (Burst 9 review copy#3): never a load-less bodyweight lift, a tired-eased one or a deload.
 export function movedCue(row, { deload = false } = {}) {

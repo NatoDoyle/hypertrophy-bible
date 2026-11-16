@@ -32,6 +32,13 @@ check("#tolerance an early skip isn't a fade (the last third of the planned sets
   const tired = eight((d, i) => workout(d, 18, i < 4 ? { marks: [{ kind: "tired", at: 14, of: 18 }] } : {}));
   assert.equal(sessionTolerance(tired, { prior: 16 })?.cap, 14);
 });
+check("#W332 an early end for a reason other than tiredness is no fade — out of time, pain, the gym, something came up; 'tired' and no answer still are", () => {
+  for (const reason of ["time", "pain", "equipment", "interrupted"])
+    assert.equal(sessionTolerance(eight((d, i) => workout(d, 12, i < 4 ? { marks: [{ kind: "early", at: 12, of: 18, reason }] } : {})), { prior: 16 }), null, reason);
+  assert.equal(sessionTolerance(eight((d, i) => workout(d, 12, i < 3 ? { marks: [{ kind: "early", at: 12, of: 18, reason: "tired" }] } : {})), { prior: 16 })?.cap, 12);
+  assert.equal(sessionTolerance(eight((d, i) => workout(d, 12, i < 3 ? { marks: [{ kind: "early", at: 12, of: 18 }] } : {})), { prior: 16 })?.cap, 12, "no reason (every mark before W332): still a fade");
+  assert.equal(sessionTolerance(eight((d, i) => workout(d, 18, i < 4 ? { marks: [{ kind: "skip", at: 13, of: 18, reason: "time" }] } : {})), { prior: 16 }), null, "a late last-set skip, out of time");
+});
 check("#tolerance 'fading' or 'empty' in the read-out: the fade began about the last few sets — the workout's sets less 2", () => {
   const s = eight((d, i) => workout(d, 16, i < 3 ? { feel: i === 0 ? "empty" : "fading" } : {}));
   assert.equal(sessionTolerance(s, { prior: 16 })?.cap, 14);

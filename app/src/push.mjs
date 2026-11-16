@@ -1,4 +1,4 @@
-import { isoWeekKeyLocal, weekHasPassed, weekDayKey, commitmentForDay, isoWeekMondayKey, localDayKey } from "../../tools/derive-core.mjs";
+import { isoWeekKeyLocal, weekHasPassed, weekDayKey, commitmentForDay, isoWeekMondayKey, localDayKey, weekAbsorbed, sessionDayKey } from "../../tools/derive-core.mjs";
 import { encryptPushPayload } from "./push-encrypt.mjs";
 import { settleChallenge, streakFreezeState, challengeSlots, normalizeChallengeProfile, celebrationCopy } from "./adherence.mjs";
 import { comebackStage, quietToday } from "./nudge.mjs";
@@ -231,7 +231,7 @@ export function shouldPush({ lastSessionAt, subscribedAt, paused, remindersOff, 
 // applied to this file's other tz-aware functions, but not this sibling call).
 // Missing tz falls back to raw UTC, same "don't starve delivery over missing
 // data" choice isUserPushHour makes for its own legacy slot.
-export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused, remindersOff, tzOffsetMin, restDays = [], subscribedAt = null }) {
+export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused, remindersOff, tzOffsetMin, restDays = [], subscribedAt = null, sessionDays = [] }) {
   if (paused || remindersOff) return false;
   const offsetMs = Number.isFinite(tzOffsetMin) ? tzOffsetMin * 60000 : 0;
   const localNow = +new Date(now) + offsetMs;
@@ -239,6 +239,8 @@ export function shouldPushForCommitment({ commitment, lastSessionAt, now, paused
   // This week's plan, or last week's carried forward (ordinal inside, lesson 40).
   const plan = commitmentForDay(commitment, todayKey);
   if (!plan || !plan.days.includes(weekDayKey(localNow))) return false;
+  // W328: a committed day an off-plan session already paid for is a rest day now.
+  if (weekAbsorbed(plan, todayKey, { sessionDays, restDays }).some((a) => a.date === todayKey)) return false;
   // The anchor is the LATEST sign of intent: the last session, the day the plan was
   // made, or (never trained) the subscription. A lapsed user who sets days today is
   // re-engaging — anchoring on the stale session alone silenced exactly those days.
@@ -582,9 +584,11 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
       // A day the user said is NOT for training (rest day, or off their weekly plan):
       // every "train" reminder below stands down on it, without stamping anything,
       // and goes out the next eligible day instead (W271, one predicate).
-      const qt = quietToday(user, now);
+      // Read once, here: W328's absorbed day needs this week's session days.
+      const sessions = await store.listSessions(userId);
+      const sessionDays = sessions.map(sessionDayKey).filter(Boolean);
+      const qt = quietToday(user, now, sessionDays);
       if (!paused && !remindersOff && !qt.quiet) {
-        const sessions = await store.listSessions(userId);
         // The user's own week (W271): the UTC instant offered a different week here
         // than /api/adherence and the freeze route, near every local week boundary.
         const freeze = streakFreezeState(sessions, qt.today ?? now, user.streak_freezes || [], user.paused || null, user.pause_history || []);
@@ -642,7 +646,7 @@ export async function runPushSweep(store, vapid, now = Date.now(), fetchFn = fet
         // the lapse-reactive push is for users without one — and never on a rest day.
         const subscribedAt = sub.created_at ? new Date(sub.created_at).toISOString() : null;
         const hit = qt.plan
-          ? shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now, tzOffsetMin: user.profile?.tz_offset_min, restDays: user.rest_days ?? [], subscribedAt })
+          ? shouldPushForCommitment({ commitment: user.profile?.commitment ?? null, lastSessionAt, paused, remindersOff, now, tzOffsetMin: user.profile?.tz_offset_min, restDays: user.rest_days ?? [], subscribedAt, sessionDays })
           : (!qt.restToday && shouldPush({ lastSessionAt, subscribedAt, paused, remindersOff, now }));
         if (!hit) continue;
         // Never POST to a non-push-service host, even if an old row slipped one in.

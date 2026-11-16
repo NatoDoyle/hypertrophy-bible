@@ -164,6 +164,18 @@ matters:
 
 ## 5. Progressive onboarding flow
 
+> **As built (W337, 2026-11 — owner: "Some of the screens are more ambiguous than I'd like").** The shipped flow is
+> a welcome ("Answer 8 quick questions (about a minute)" → **Build my plan**) then eight questions, every stored value
+> as below: **experience** ("How long have you been lifting consistently?" — under a year / 1–3 / 3+, with "coming back
+> after a break? pick the lower one — I move you up automatically"), **goal** (each option says what it means; Build
+> muscle highlighted), **days** ("reliably train"; the hint names the split those days build, from the generator's own
+> table), **session length** (timed from the first warm-up to the last set, ≈4 min a set), **where you train most**
+> (each kit's assumptions stated; other places live in Settings → Other places you train), **what you enjoy** (variety
+> isn't asked of a beginner; cardio "doesn't add sessions"; skipped lifts "swapped when there's an equally good
+> option"), **priority muscles** (the hint is the live consequence of the picks — the engine's own specialization rule),
+> **anything that hurts** (+ severity, singular when one region; "sharp or worsening pain → see a physio first"). The
+> table below is the original design, kept for its reasoning; `units` and `sex` are derived or asked at the point of use.
+
 **Goal: under ~90 seconds, mostly single taps, every step skippable, and a never-trained person is holding
 a real plan and heading into a first workout.** Onboarding writes exactly the seven required fields of
 `onboarding-profile.schema.json` (`user_id`, `units`, `sex`, `training_status`, `primary_goal`,

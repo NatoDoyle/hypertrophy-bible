@@ -510,6 +510,26 @@ try {
       && famOfT(exM.get(r.exercise)?.movement_pattern) === famOfT(exM.get(r.your_pick.id)?.movement_pattern)), JSON.stringify(offered.map((r) => [r.exercise, r.your_pick.id])));
     const fitsToday = await Promise.all(offered.map(async (r) => (await (await app.request(`/api/exercise/${r.exercise}/alternatives?session=${encodeURIComponent(ypT.session.name)}&live=${encodeURIComponent(live.join(","))}`, { headers: { "X-HB-User": ypU } })).json()).alternatives.some((a) => a.id === r.your_pick.id)));
     ok("#W326 …and every pick is among today's fitting alternatives", fitsToday.every(Boolean), JSON.stringify(fitsToday));
+    // W334 (owner: "Does the 'swap' button choose a random exercise or does it pick the next best option?"): the plan
+    // editor asks the SAME ranked engine (scope=plan, its unsaved day as live) — tier 1 first, never a lift already in
+    // the day, each with its tier and mechanic for the "why"; and the top of the list is what "It's busy" would take.
+    {
+      const day = (await store.getUser(ypU)).program.sessions[0];
+      const X = day.exercises.find((e) => exM.get(e.exercise)?.mechanic === "compound")?.exercise;
+      const dayIds = day.exercises.map((e) => e.exercise);
+      const pa = (await (await app.request(`/api/exercise/${X}/alternatives?scope=plan&session=${encodeURIComponent(day.name)}&live=${encodeURIComponent(dayIds.join(","))}`, { headers: { "X-HB-User": ypU } })).json()).alternatives ?? [];
+      const tiers = pa.map((a) => a.tier);
+      ok("#W334 the editor's swap is ranked: tiers never go back down (same movement first), nothing already in the day, each with its mechanic",
+        pa.length > 0 && tiers.every((t, i) => i === 0 || t >= tiers[i - 1]) && pa.every((a) => !dayIds.includes(a.id) && typeof a.mechanic === "string"), JSON.stringify(pa.map((a) => [a.id, a.tier])));
+      // A lift the editor ADDED (not in the stored plan) still gets a list — the unsaved day is the context.
+      const ADD = ["concentration-curl", "hammer-curl", "cable-curl"].find((x) => !dayIds.includes(x)) ?? "concentration-curl";
+      const added = [...dayIds, ADD];
+      const pb = (await (await app.request(`/api/exercise/${ADD}/alternatives?scope=plan&session=${encodeURIComponent(day.name)}&live=${encodeURIComponent(added.join(","))}`, { headers: { "X-HB-User": ypU } })).json()).alternatives ?? [];
+      ok("#W334 …a lift only the editor has added still gets ranked alternatives", pb.length > 0 && pb.every((a) => !added.includes(a.id)), JSON.stringify(pb.map((a) => a.id)));
+      const busy = await json("POST", "/api/exercise/cant-do", { user_id: ypU, exercise: X, scope: "today", session: day.name, live: dayIds });
+      const todayTop = (await (await app.request(`/api/exercise/${X}/alternatives?session=${encodeURIComponent(day.name)}&live=${encodeURIComponent(dayIds.join(","))}`, { headers: { "X-HB-User": ypU } })).json()).alternatives?.[0]?.id;
+      ok("#W334 one ranking, two doors: the top alternative is what 'It's busy' takes", busy.status === 200 && busy.data.replaced_by === todayTop, JSON.stringify([busy.data?.replaced_by, todayTop]));
+    }
     const r0 = offered[0];
     const took = r0 ? await json("POST", "/api/exercise/cant-do", { user_id: ypU, exercise: r0.exercise, scope: "today", session: ypT.session.name, live, pick: r0.your_pick.id }) : null;
     ok("#W326 taking the pick goes through the pick door (it fits, by construction)", took?.status === 200 && took.data.replaced_by === r0.your_pick.id, JSON.stringify(took?.data));
@@ -2065,6 +2085,28 @@ try {
   ok("#weekly-plan a paused (sick/injured) user is never told they missed a day — rail #1", sickWed?.missed_planned_day === null);
   const noPlanToday = (await (await app.request("/api/today?d=2026-10-07", { headers: { "X-HB-User": cUser } })).json()).daily;
   ok("#weekly-plan no commitment → no planned-day fields claim anything", noPlanToday?.planned_today === null && noPlanToday?.next_planned_day === null);
+  // W328 (owner: "I skipped the rest day … now it's making me do five sessions for the week"):
+  // through the door the client uses — an off-plan Wednesday makes Thursday a rest day.
+  {
+    const abUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, available_equipment: ["bodyweight"] } })).data.user_id;
+    await store.updateUser(abUser, (u) => { u.profile.commitment = { week: "2026-W41", days: ["mon", "tue", "thu", "fri"], set_on: "2026-10-05" }; return u; });
+    for (const d of ["2026-10-05", "2026-10-06", "2026-10-07"]) await json("POST", "/api/session", { user_id: abUser, session_id: `ab-${d}`, date: `${d}T10:00:00Z`, local_date: d, sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+    const thu = await (await app.request("/api/today?d=2026-10-08", { headers: { "X-HB-User": abUser } })).json();
+    const tdy = thu.daily;
+    ok("#W328 /api/today: an off-plan Wednesday absorbs Thursday — not a planned day, nothing missed, Friday next, the day that paid named",
+      tdy?.planned_today === false && tdy?.missed_planned_day === null && tdy?.next_planned_day?.date === "2026-10-09" && tdy?.absorbed_today?.by_day === "wed", JSON.stringify(tdy && { p: tdy.planned_today, m: tdy.missed_planned_day, n: tdy.next_planned_day, a: tdy.absorbed_today }));
+    ok("#W328 …the week strip's facts mark Thursday absorbed (and only Thursday), and a session is still served (Train anyway)",
+      JSON.stringify((tdy?.week_plan?.days ?? []).filter((d) => d.absorbed).map((d) => d.date)) === JSON.stringify(["2026-10-08"]) && Array.isArray(thu.session?.exercises) && thu.session.exercises.length > 0);
+    const fri = (await (await app.request("/api/today?d=2026-10-09", { headers: { "X-HB-User": abUser } })).json()).daily;
+    ok("#W328 …and Friday is a planned day again", fri?.planned_today === true && fri?.absorbed_today === null);
+    // No weekly plan: once days_per_week distinct days are in, the week is done (informational).
+    const wdUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+    for (const d of ["2026-10-05", "2026-10-06", "2026-10-07"]) await json("POST", "/api/session", { user_id: wdUser, session_id: `wd-${d}`, date: `${d}T10:00:00Z`, local_date: d, sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+    const wdThu = (await (await app.request("/api/today?d=2026-10-08", { headers: { "X-HB-User": wdUser } })).json()).daily;
+    const wdWed = (await (await app.request("/api/today?d=2026-10-07", { headers: { "X-HB-User": wdUser } })).json()).daily;
+    ok("#W328 no weekly plan: three of three days in → Thursday reads week_done; the day you trained doesn't",
+      wdThu?.week_done?.n === 3 && wdThu?.planned_today === null && wdWed?.week_done === null, JSON.stringify([wdThu?.week_done, wdWed?.week_done]));
+  }
   // set_on: the day the promise was made, in the CALLER's frame — days before it are never "missed".
   const soUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
   const soRes = await app.request("/api/commitment", { method: "POST", headers: { "content-type": "application/json", "X-HB-TZ": "-420" }, body: JSON.stringify({ user_id: soUser, days: ["mon"] }) });
@@ -2485,6 +2527,11 @@ try {
       await json("POST", "/api/session", { user_id: junkU, session_id: "w4f", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
         sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }], fade_marks: fm });
       const marks = (await store.listSessions(junkU)).find((x) => x.session_id === "w4f")?.fade_marks ?? [];
+      await json("POST", "/api/session", { user_id: junkU, session_id: "w4why", date: dAgo(1), local_date: dAgo(1).slice(0, 10), session_name: "Lower",
+        sets: [{ exercise: "leg-extension", set_type: "work", weight_kg: 40, reps: 12 }], fade_marks: [{ kind: "early", at: 1, of: 9, reason: "time" }, { kind: "skip", at: 1, of: 9, reason: "<script>" }] });
+      const rmarks = (await store.listSessions(junkU)).find((x) => x.session_id === "w4why")?.fade_marks ?? [];
+      ok("#W332 the door keeps a known end reason and drops a junk one (the mark survives without it)",
+        JSON.stringify(rmarks) === JSON.stringify([{ kind: "early", at: 1, of: 9, reason: "time" }, { kind: "skip", at: 1, of: 9 }]), JSON.stringify(rmarks));
       ok("#fade the door keeps valid fade marks (kind, whole hard sets, the planned total), drops junk, keeps at most 20",
         JSON.stringify(marks.slice(0, 3)) === JSON.stringify([{ kind: "skip", at: 12, of: 18 }, { kind: "early", at: 14, of: 18 }, { kind: "tired", at: 9 }]) && marks.length === 20, JSON.stringify(marks.slice(0, 4)));
       const f1 = await json("POST", "/api/session/feel", { user_id: junkU, session_id: "w4f", feel: "fading" });
@@ -3175,8 +3222,9 @@ try {
   // card (one schedule question at a time).
   {
     const FULLQ = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+    // W329: 80 minutes is the old 60-minute fixture's budget at 4 minutes a set (an untimed lifter's 60 min holds 15).
     const tf = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "intermediate", primary_goal: "hypertrophy",
-      days_per_week: 4, session_length_min: 60, available_equipment: FULLQ } })).data.user_id;
+      days_per_week: 4, session_length_min: 80, available_equipment: FULLQ } })).data.user_id;
     const today = async (id = tf) => (await app.request("/api/today", { headers: { "X-HB-User": id } })).json();
     const strip = (f) => (f ? { ...f, key: undefined } : null);
     // A day made long in the STORED program (a legacy plan or a hand of extra sets) — what the user has is what's measured.
@@ -3225,7 +3273,7 @@ try {
     // A plan at block 1 whose alternatives differ between block 0 and block 1, so the check can tell them apart.
     const kbm = await import("../src/kb-data.mjs");
     const KBT = { exercises: kbm.exercises, muscles: kbm.muscles, contraindications: kbm.contraindications, guidelines: kbm.guidelines };
-    const bp = { user_id: "blk-intermediate-2-60-0", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 60, available_equipment: FULLQ };
+    const bp = { user_id: "blk-intermediate-2-60-0", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 2, session_length_min: 80, available_equipment: FULLQ }; // W329: the old 60's budget
     // A tune big enough to move this plan's alternatives, so the check can tell a dropped tune too.
     const tune = { chest: -2, lats: -2, quadriceps: -2, "upper-back": -2, triceps: -2, biceps: -2 };
     const bg = generateUserPlan(bp, { blockIndex: 1, specSpent: true, volumeAdjust: tune });
@@ -3257,7 +3305,7 @@ try {
   // today's stalls. Fixture: a seed whose card exists only WITH the stall (lat-pulldown) — the exact failing case.
   {
     const ks = (await json("POST", "/api/onboard", { profile: { units: "metric", sex: "male", training_status: "beginner", primary_goal: "hypertrophy",
-      days_per_week: 3, session_length_min: 45, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] } })).data.user_id;
+      days_per_week: 3, session_length_min: 60, available_equipment: ["barbell", "dumbbell", "machine", "cable", "bodyweight"], priority_muscles: ["chest"] } })).data.user_id; // W329: the old 45's budget
     await store.updateUser(ks, (u) => { u.profile.user_id = "ks-beginner-3-45-chest-0"; const g = generateUserPlan(u.profile); u.program = g.program; u.plan_rationale = g.rationale; u.plan_meta = { ...u.plan_meta, ...g.meta, block_index: 0 }; return u; });
     for (let w = 0; w < 6; w++) await json("POST", "/api/session", { user_id: ks, session_id: `ks-${w}`, date: dAgo(36 - w * 7), local_date: dAgo(36 - w * 7).slice(0, 10),
       sets: Array.from({ length: 3 }, () => ({ exercise: "lat-pulldown", set_type: "work", weight_kg: 40, reps: 10, completed_at: dAgo(36 - w * 7) })) });
@@ -4653,6 +4701,8 @@ try {
     // Device reminder settings (W285) are written only by /api/reminders/device, through
     // the validators the push sweep reads with.
     reminders: { weigh_in: { on: true, time: "03:00" }, workout: { on: false, time: "garbage" } },
+    // The lifter's other setups (W336) are written only by /api/setups (and cant-do for a setup's own "No machine").
+    equipment_setups: { active: "x", others: [{ id: "x", name: "<script>", equipment: ["laser"], unavailable: [] }] },
     // …and the day each one last fired (W285 review), push delivery state like comeback_push.
     reminders_fired: { weigh_in: "2099-01-01" },
   };
@@ -5360,6 +5410,126 @@ try {
     const rsPick = await json("POST", "/api/exercise/cant-do", { user_id: rsU, exercise: "dumbbell-fly", scope: "today", session: rsToday.name, live: ["machine-chest-press", "dumbbell-fly"], pick: "dumbbell-bench-press" });
     ok("#cant-do the substitute's row carries the REPLACED slot's prescription, not its own original slot's",
       rsPick.status === 200 && rsPick.data.row?.rep_range === fly.rep_range && rsPick.data.row?.sets === fly.sets, JSON.stringify(rsPick.data?.row && { rr: rsPick.data.row.rep_range, sets: rsPick.data.row.sets }));
+  }
+
+  // --- W335 (owner: "I can't change the order of the exercises"; chose: remember it and re-apply it at every rebuild, so
+  // the plan keeps adapting) — through the door the editor uses.
+  {
+    const FULLR = ["barbell", "dumbbell", "machine", "cable", "bodyweight"];
+    const oU = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 80, available_equipment: FULLR } })).data.user_id;
+    const u0 = await store.getUser(oU);
+    const day = u0.program.sessions.find((s) => !s.exercises.some((e) => e.superset_with)) ?? u0.program.sessions[0];
+    const rev = [...day.exercises].reverse();
+    const progWith = (sessions) => ({ name: u0.program.name, sessions });
+    // A reorder-only Save on a plan the app still runs: remembered, never hand-built.
+    const sv = await json("POST", "/api/plan/save", { user_id: oU, program: progWith(u0.program.sessions.map((s) => (s.name === day.name ? { ...s, exercises: rev } : s))) });
+    const u1 = await store.getUser(oU);
+    ok("#W335 a reorder-only Save is remembered (order_pref), never makes the plan hand-built, keeps the rationale",
+      sv.status === 200 && !u1.program.custom && !!u1.plan_rationale && Array.isArray(u1.order_pref?.[day.name]) && JSON.stringify(sv.data.ordered) === JSON.stringify([day.name])
+      && JSON.stringify(u1.program.sessions.find((s) => s.name === day.name).exercises.map((e) => e.exercise)) === JSON.stringify(rev.map((e) => e.exercise)), JSON.stringify([sv.status, u1.program.custom, sv.data?.ordered]));
+    const tdy = await (await app.request(`/api/today`, { headers: { "X-HB-User": oU } })).json();
+    const ex = await (await app.request(`/api/plan/explain`, { headers: { "X-HB-User": oU } })).json();
+    ok("#W335 …the Plan tab hears which days are in the lifter's order (explain.ordered survives the route)", JSON.stringify(ex.ordered) === JSON.stringify([day.name]));
+    // It survives a rebuild: a Settings change (training answers) rebuilds the plan, and the day keeps the lifter's order.
+    await json("POST", "/api/plan/regenerate", { user_id: oU, profile: { priority_muscles: ["side-delts"] } });
+    const u2 = await store.getUser(oU), day2 = u2.program.sessions.find((s) => s.name === day.name);
+    const kbm = await import("../src/kb-data.mjs"), lk = new Map(kbm.exercises.map((e) => [e.id, e]));
+    // Every lift that is in the day both before and after keeps the lifter's relative order (a lift the rebuild added
+    // goes where its role puts it).
+    const mineIds = u1.program.sessions.find((s) => s.name === day.name).exercises.map((e) => e.exercise);
+    const common = (day2?.exercises ?? []).map((e) => e.exercise).filter((x) => mineIds.includes(x));
+    ok(`#W335 …and a rebuild keeps it: the lifts the rebuilt day still holds stay in the lifter's order (${common.length} kept), the plan still the app's`,
+      !!day2 && !u2.program.custom && Array.isArray(u2.order_pref?.[day.name]) && common.length >= 2 && JSON.stringify(common) === JSON.stringify(mineIds.filter((x) => common.includes(x))), JSON.stringify([common, mineIds]));
+    // /api/plan/order: a bad reshuffle is refused; reset restores exactly the generator's order and forgets the day.
+    const bad = await json("POST", "/api/plan/order", { user_id: oU, session: day.name, order: ["not-a-lift"] });
+    ok("#W335 the order door refuses anything but a reshuffle of the stored day (400)", bad.status === 400 && bad.data.error === "bad-order");
+    const rs = await json("POST", "/api/plan/order", { user_id: oU, session: day.name, reset: true });
+    const u3 = await store.getUser(oU);
+    const fresh = generateUserPlan(u3.profile, planOptsFor({ ...u3, order_pref: undefined }, { blockIndex: u3.plan_meta?.block_index ?? 0, volumeAdjust: u3.plan_meta?.volume_adjust ?? {} }));
+    const freshDay = fresh.program.sessions.find((s) => s.name === day.name);
+    ok("#W335 'Restore recommended order' forgets the day and serves the generator's own order",
+      rs.status === 200 && !u3.order_pref?.[day.name] && JSON.stringify(u3.program.sessions.find((s) => s.name === day.name).exercises.map((e) => e.exercise)) === JSON.stringify(freshDay?.exercises.map((e) => e.exercise)),
+      JSON.stringify([u3.program.sessions.find((s) => s.name === day.name)?.exercises.map((e) => e.exercise), freshDay?.exercises.map((e) => e.exercise)]));
+    // A reorder WITH a content change is an edit, as ever (hand-built), and the order door then refuses (409).
+    const u4 = await store.getUser(oU);
+    await json("POST", "/api/plan/save", { user_id: oU, program: progWith(u4.program.sessions.map((s) => (s.name === day.name ? { ...s, exercises: [...s.exercises].reverse().map((e, i) => (i ? e : { ...e, sets: e.sets + 1 })) } : s))) });
+    const u5 = await store.getUser(oU);
+    const c409 = await json("POST", "/api/plan/order", { user_id: oU, session: day.name, reset: true });
+    ok("#W335 reorder + a set change is an edit (custom), and the order door then hands it to Save (409)", u5.program.custom === true && c409.status === 409);
+    // The low-readiness trim drops the last ISOLATION, never a compound the lifter moved to the end.
+    const tU = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, session_length_min: 80, available_equipment: FULLR } })).data.user_id;
+    // The day Today serves must hold an isolation to trim: skip ahead (the rotation's own door) until it does.
+    let tday = null;
+    for (let k = 0; k < 4 && !tday; k++) {
+      const nm = (await (await app.request(`/api/today`, { headers: { "X-HB-User": tU } })).json()).session?.name;
+      const d = (await store.getUser(tU)).program.sessions.find((s) => s.name === nm);
+      if (d && d.exercises.length > 3 && !d.exercises.some((e) => e.superset_with) && d.exercises.some((e) => lk.get(e.exercise)?.mechanic === "isolation")) tday = d;
+      else await json("POST", "/api/today/skip", { user_id: tU });
+    }
+    const comp = tday?.exercises.find((e) => lk.get(e.exercise)?.mechanic === "compound");
+    if (comp) {
+      const moved = [...tday.exercises.filter((e) => e !== comp), comp];
+      await json("POST", "/api/plan/order", { user_id: tU, session: tday.name, order: moved.map((e) => e.exercise) });
+      await json("POST", "/api/checkin", { user_id: tU, date: new Date().toISOString(), sleep: 1, energy: 1, soreness: 5, stress: 5 });
+      const lowT = (await (await app.request(`/api/today`, { headers: { "X-HB-User": tU } })).json()).session;
+      const lastIso = [...moved].reverse().find((e) => lk.get(e.exercise)?.mechanic === "isolation")?.exercise;
+      ok("#W335 a low day trims the last isolation — never the compound the lifter put last", lowT?.exercises?.at(-1)?.exercise === comp.exercise && !lowT.exercises.some((e) => e.exercise === lastIso) && /trimmed the last accessory/.test(lowT?.coach_note ?? ""),
+        JSON.stringify([lowT?.exercises?.map((e) => e.exercise), lowT?.coach_note]));
+    } else ok("#W335 (fixture) the trim fixture reaches a plain day with a compound, an isolation and >3 lifts", false);
+  }
+
+  // --- W336 (owner: "There's no way to alternate preferences like … 'I don't have this machine'"; chose BOTH: the way
+  // back made findable, and switching between setups such as home and gym) — through the client's doors.
+  {
+    const FULLW = ["barbell", "dumbbell", "machine", "cable", "bodyweight"], HOMEW = ["dumbbell", "bodyweight"];
+    const kbw = await import("../src/kb-data.mjs"), lkw = new Map(kbw.exercises.map((e) => [e.id, e]));
+    const sU = (await json("POST", "/api/onboard", { profile: { units: "metric", training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, session_length_min: 80, available_equipment: FULLW } })).data.user_id;
+    const post = (body) => json("POST", "/api/setups", { user_id: sU, ...body });
+    const v0 = await (await app.request("/api/setups", { headers: { "X-HB-User": sU } })).json();
+    ok("#W336 no other places yet: the view says so, main is active", v0.active === "main" && v0.others.length === 0 && v0.max === 3);
+    const bad1 = await post({ action: "launch" }), bad2 = await post({ action: "save", name: "   " });
+    ok("#W336 the setups door refuses an unknown action (400) and an empty name (400)", bad1.status === 400 && bad2.status === 400);
+    const add = await post({ action: "save", name: "  Home   gym  ", equipment: ["dumbbell", "bodyweight", "laser", 7] });
+    ok("#W336 a new place: name tidied, only real equipment kept", add.status === 200 && add.data.others[0]?.name === "Home gym" && JSON.stringify(add.data.others[0]?.equipment) === JSON.stringify([...HOMEW].sort()), JSON.stringify(add.data.others));
+    const hid = add.data.others[0].id;
+    for (const n of ["A", "B"]) await post({ action: "save", name: n, equipment: ["band"] });
+    ok("#W336 at most 3 other places (409)", (await post({ action: "save", name: "D", equipment: ["band"] })).status === 409);
+    const tMain = await (await app.request("/api/today", { headers: { "X-HB-User": sU } })).json();
+    ok("#W336 with main active Today is unchanged, but offers the chip (daily.setups)", !tMain.session.setup && tMain.daily.setups?.active === "main" && tMain.daily.setups.options.length === 3);
+    await post({ action: "activate", id: hid });
+    const tHome = await (await app.request("/api/today", { headers: { "X-HB-User": sU } })).json();
+    const rows = tHome.session?.exercises ?? [];
+    ok("#W336 at Home, today's day is adapted: every lift is home kit, the swapped ones marked stand-ins (slot_of, swap_why 'setup')",
+      rows.length > 0 && rows.every((r) => HOMEW.includes(lkw.get(r.exercise)?.equipment)) && rows.some((r) => r.swap_why === "setup" && typeof r.slot_of === "string") && tHome.session.setup?.name === "Home gym",
+      JSON.stringify(rows.map((r) => [r.exercise, r.swap_why ?? null])));
+    const uS = await store.getUser(sU);
+    ok("#W336 …and the plan itself is untouched (one plan)", JSON.stringify(uS.program) === JSON.stringify((await store.getUser(sU)).program) && !uS.program.custom && uS.program.sessions.some((s) => s.exercises.some((e) => !HOMEW.includes(lkw.get(e.exercise)?.equipment))));
+    const live = rows.map((r) => r.exercise);
+    const alts = (await (await app.request(`/api/exercise/${rows[0].exercise}/alternatives?session=${encodeURIComponent(tHome.session.name)}&live=${encodeURIComponent(live.join(","))}`, { headers: { "X-HB-User": sU } })).json()).alternatives ?? [];
+    ok("#W336 the swap doors offer only what Home has (alternatives, your pick)", alts.every((a) => HOMEW.includes(a.equipment)) && rows.every((r) => !r.your_pick || HOMEW.includes(lkw.get(r.your_pick.id)?.equipment)), JSON.stringify(alts.map((a) => a.equipment)));
+    // Logging that day: the stand-ins are recorded as setup stand-ins, never as votes about the plan's lifts.
+    const swapped = rows.find((r) => r.swap_why === "setup");
+    await json("POST", "/api/session", { user_id: sU, session_id: "su-home-1", date: new Date().toISOString(), local_date: new Date().toISOString().slice(0, 10), session_name: tHome.session.name,
+      sets: [{ exercise: swapped.exercise, set_type: "work", weight_kg: 20, reps: 10, completed_at: new Date().toISOString() }],
+      targets: [{ exercise: swapped.exercise, sets: swapped.sets, rep_range: swapped.rep_range, stood_in_for: swapped.slot_of, swap_why: "setup" }] });
+    const logged = (await store.listSessions(sU)).find((x) => x.session_id === "su-home-1");
+    const u2 = await store.getUser(sU);
+    ok("#W336 a day at Home is logged with its stand-ins marked 'setup', and teaches no preference", logged?.targets?.[0]?.swap_why === "setup" && !Object.keys(u2.plan_meta?.pref_scores ?? {}).length, JSON.stringify([logged?.targets?.[0], u2.plan_meta?.pref_scores]));
+    // "No machine" at Home is about Home: on Home's list, the plan unchanged; Bring back undoes it.
+    const homeLift = rows.find((r) => lkw.get(r.exercise)?.equipment === "dumbbell")?.exercise;
+    const progBefore = JSON.stringify((await store.getUser(sU)).program);
+    const nm = await json("POST", "/api/exercise/cant-do", { user_id: sU, exercise: homeLift, scope: "always", session: tHome.session.name, live });
+    const u3 = await store.getUser(sU), homeSetup = u3.profile.equipment_setups.others.find((o) => o.id === hid);
+    ok("#W336 'No machine' at Home goes on Home's own list — never the plan's — and today gets Home's next best",
+      nm.status === 200 && nm.data.plan_unchanged === true && homeSetup.unavailable.some((x) => x.id === homeLift) && !(u3.profile.unavailable_exercises ?? []).some((x) => x.id === homeLift) && JSON.stringify(u3.program) === progBefore,
+      JSON.stringify(nm.data));
+    const back = await post({ action: "bring_back", id: hid, exercise: homeLift });
+    ok("#W336 …and Bring back takes it off Home's list", back.status === 200 && !back.data.others.find((o) => o.id === hid).unavailable.some((x) => x.id === homeLift));
+    const del = await post({ action: "delete", id: hid });
+    ok("#W336 deleting the place in use falls back to the main setup", del.status === 200 && del.data.active === "main" && !del.data.others.some((o) => o.id === hid));
+    // The way back, findable: Settings reads the same explain lists the Plan tab does.
+    const ex = await (await app.request(`/api/plan/explain`, { headers: { "X-HB-User": sU } })).json();
+    ok("#W336 the not-using lists ride explain for Settings' 'Lifts I'm not using' (one renderer, two doors)", Array.isArray(ex.unavailable) && Array.isArray(ex.skipped) && Array.isArray(ex.learned_out));
   }
 
   console.log(`\n${pass} route test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);

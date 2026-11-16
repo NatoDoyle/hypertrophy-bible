@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, EMPTY_BAR_LB_KG, repsEstimated, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, EMPTY_BAR_LB_KG, repsEstimated, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, weekAbsorbed, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 import { qualityCapFor } from "../../tools/plan-core.mjs";
 import { sessionTolerance, restAdapt } from "../../tools/response-core.mjs";
@@ -184,7 +184,9 @@ function swapNoteFor(swaps, name) {
 // is" — chasing a PR into an event contradicts the freshness the taper exists to
 // buy. The layoff-comeback ease still overrides (safety first; buildToday makes
 // the taper copy honest about it), and the failure/hold paths are unchanged.
-export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null, prescribedRir = null, holdLoad = false, { barKg = EMPTY_BAR_KG } = {}) {
+// The effort chips' ceiling (app.js effChips: 0 1 2 3 "4+"): "4+" is stored as 4, so 4 is the most RIR a set can say.
+export const RIR_CHIP_MAX = 4;
+export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now = null, prescribedRir = null, holdLoad = false, { barKg = EMPTY_BAR_KG, beginner = false } = {}) {
   const last = lastSetsForExercise(sessions, exId);
   const { min, max } = parseRange(repRange);
   if (!last) return { suggested_kg: null, note: "First time — pick a weight where the last rep is ~2–3 reps from failure." };
@@ -248,10 +250,26 @@ export function suggestWeight(sessions, exId, repRange, byId = exerciseById, now
   const avgRir = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
   if (rirs.length) {
     const bandTop = judgeBand ? +judgeBand[2] : 2;
-    if (!holdLoad && avgRir >= bandTop + 1 && judged.every((s) => s.reps >= min)) {
+    // "4+" (the chips' ceiling, stored as 4) is past every compound band's top (W330: a "1-3" band's top + 1 = 4 was
+    // the only bump it could ever earn — the old double needed 5, which no chip can record).
+    if (!holdLoad && avgRir >= Math.min(bandTop + 1, RIR_CHIP_MAX) && avgRir > bandTop && judged.every((s) => s.reps >= min)) {
       if (estN) return { suggested_kg: lastWeight, note: estHold(), ...base }; // a bump needs every set at the weight real (review D2)
-      const inc = loadIncrement(exId, byId) * (avgRir >= bandTop + 2 ? 2 : 1);
-      return { suggested_kg: Math.round((lastWeight + inc) * 4) / 4, note: `You left ~${Math.round(avgRir)} reps in reserve last time — add ${inc} kg.`, ...base };
+      // SIZED BY CAPACITY (W330, owner: "the app doesn't seem to be aware of the RIR … to suggest more appropriate
+      // weights"): reps + RIR is the set's rep capacity, carried by Epley to the load that puts the TOP of today's range
+      // at the band's near edge — the same model the in-session "heavier" hint and the below-range ease already use (the
+      // KB's RIR autoregulation: "Load adjusted to hit target RIR", rir-autoregulation.json). Read on the freshest set at
+      // the weight (set 1), "4+" counted as exactly 4 (a floor, never a guess upward). At least one increment; at most
+      // two or ~10%, whichever is less — far-from-failure calls are the least accurate (proximity-to-failure.md,
+      // zourdos-2021-rir-accuracy), and a beginner's most of all, so a beginner's bump stays one increment.
+      const inc = loadIncrement(exId, byId);
+      const s1r = anchor.first; // real here: an estimate at the weight returned above
+      const s1rir = Math.min(typeof s1r.rir === "number" ? s1r.rir : avgRir, RIR_CHIP_MAX);
+      const near = band ? +band[1] : judgeNear;
+      const raw = loadForReps(lastWeight, s1r.reps, s1rir, max, near);
+      const cap = beginner ? lastWeight + inc : Math.min(lastWeight + 2 * inc, Math.floor((lastWeight * 1.1) / inc + 1e-9) * inc);
+      const sized = Math.max(lastWeight + inc, Math.min(cap, Math.floor(raw / inc + 1e-9) * inc));
+      const next = Math.round(sized * 4) / 4, add = Math.round((next - lastWeight) * 100) / 100;
+      return { suggested_kg: next, note: `You left ~${Math.round(avgRir)} reps in reserve last time — add ${add} kg.`, rir_bump: true, ...base };
     }
   }
   // BELOW THE RANGE (W279, the owner's call): the KB's own double-progression rule is "pick
@@ -590,7 +608,7 @@ const unlinkOrphanSupersets = (list) => {
 // built the same 7-exercise, 14-set session on day one as on day one hundred, and
 // beginners are exempt from the mesocycle wave (`blockPhase` returns null for
 // them), so the least experienced user was the ONLY one who got no ramp at all.
-// At the engine's own ~3 min/set that is ~36 minutes of counted work before a
+// At the engine's default 4 min/set (W329) that is ~56 minutes of counted work before a
 // warm-up, ramp-up sets on five different stations, or finding those stations for
 // the first time.
 //
@@ -749,7 +767,7 @@ export function servedLift(ex, sessions, ctx, byId = exerciseById, now = null, s
     : ex.rir ?? "1-3";
   // The lifter's own bar for this lift (fix C3): a pounds lift's is the 45-lb one.
   const barKg = (ctx.exerciseUnits?.[ex.exercise] ?? ctx.units) === "imperial" ? EMPTY_BAR_LB_KG : EMPTY_BAR_KG;
-  const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand, !!taper, { barKg });
+  const sug = suggestWeight(sessions, ex.exercise, ex.rep_range, byId, now, rirBand, !!taper, { barKg, beginner: !!ctx.beginner });
   // Apply the mesocycle wave: sets scale with the block week — but never below 2
   // when the plan prescribed >= 2. A ramp/deload drops sets from the BIG doses
   // (4→3, 4→2), it doesn't turn every 2-set isolation into 1-set scatter (the
@@ -876,7 +894,11 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
     // awful sleep/energy that they're "in their normal range" (that fabricates a
     // status against their own input and teaches them the check-in is fake).
     if (templateExercises.length > 3 && !untrimmed) {
-      templateExercises = unlinkOrphanSupersets(templateExercises.slice(0, -1)); // drop the last accessory
+      // …the LAST ISOLATION (W335: with the lifter's own order a compound can end the day, and "the last accessory"
+      // must never be a squat), else the last row. Generated orders end in isolations, so for them nothing changes.
+      const k = templateExercises.findLastIndex((x) => (byId.get(x.exercise)?.mechanic ?? "compound") === "isolation");
+      const drop = k >= 0 ? k : templateExercises.length - 1;
+      templateExercises = unlinkOrphanSupersets(templateExercises.filter((_, j) => j !== drop));
       coach_note = "You flagged low sleep/energy today, so I trimmed the last accessory. Showing up is the win — rest is training too.";
     } else {
       coach_note = "You flagged low sleep/energy today. It's already a short session, so keep it — but take a little extra rest and stop 2–3 reps short of failure. Showing up is the win.";
@@ -1202,7 +1224,9 @@ export function buildToday(user, sessions, readiness = null, customEx = [], now 
   // itself (rationale.session_notes, Wave 250 — lesson 36's show-the-mechanism).
   // "About N min" (W304): the session-time model over the day AS SERVED (this week's sets), at the measured pace.
   const minutes_estimate = sessionMinutes(exercises.map((r) => ({ exercise: r.exercise, sets: r.sets, superset_with: r.superset_with ?? null })), byId, user.plan_meta?.pace ?? null); // at the lifter's pace (W316)
-  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, minutes_estimate, coach_note, announcement, gap_note, swap_note,
+  // W329: whether the estimate is the lifter's own pace or the 4-minutes-a-set default (the copy says which).
+  const pace_learned = Object.keys(user.plan_meta?.pace ?? {}).some((k) => ["heavy", "moderate", "isolation"].includes(k));
+  return { index: idx, day_number: sessions.length + 1, never_trained: neverTrained, name: templateSession.name, program_name: program.name, exercises, minutes_estimate, pace_learned, coach_note, announcement, gap_note, swap_note,
     maintenance_note: user.plan_rationale?.session_notes?.[templateSession.name] ?? null,
     // Told, not silently done: the plan screen says 7 and Today would say 4, and an
     // unexplained gap between them is exactly the kind of thing that makes an app
@@ -1321,7 +1345,11 @@ function slotsLeftThisWeek(user, sessions, todayKey) {
   if (!todayKey) return 0;
   const wd = WEEK_DAY_KEYS.indexOf(weekDayKey(todayKey));
   const eff = commitmentForDay(user.profile?.commitment, todayKey);
-  if (eff) return eff.days.filter((d) => { const k = WEEK_DAY_KEYS.indexOf(d); return k > wd && !(user.rest_days ?? []).includes(shiftDayKey(todayKey, k - wd)); }).length;
+  if (eff) {
+    // W328: a committed day an off-plan session already paid for holds no slot.
+    const absorbed = new Set(weekAbsorbed(eff, todayKey, { sessionDays: sessions.map(sessionDayKey).filter(Boolean), restDays: user.rest_days ?? [] }).map((a) => a.date));
+    return eff.days.filter((d) => { const k = WEEK_DAY_KEYS.indexOf(d); const date = shiftDayKey(todayKey, k - wd); return k > wd && !(user.rest_days ?? []).includes(date) && !absorbed.has(date); }).length;
+  }
   const monday = shiftDayKey(todayKey, -wd);
   const trained = new Set(sessions.map(sessionDayKey).filter((d) => d && d >= monday && d <= todayKey)).size;
   return Math.max(0, Math.min(6 - wd, (user.profile?.days_per_week ?? 3) - trained));

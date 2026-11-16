@@ -173,6 +173,8 @@ export function hubWorkoutState({ daily = {}, session = {}, status = {} } = {}) 
   // Rail #1: a paused (sick/injured) user is promised no pressure — never "missed".
   if (daily.missed_planned_day && status.state !== "paused") return "missed";
   if (daily.planned_today === false) return "unplanned";
+  // W328, no weekly plan: the week's sessions are already in — today steps back the same way.
+  if (daily.week_done) return "unplanned";
   return "start";
 }
 
@@ -203,12 +205,15 @@ export function weekStrip(weekPlan, { todayKey, hubState = null, blockEnds = fal
   for (const d of weekPlan.days) {
     const trained = Array.isArray(d.trained) ? d.trained : [];
     const at = { day: d.day, date: d.date };
+    // W328: a committed day an off-plan session paid for is a rest day — it takes no
+    // session from the rotation, so the week holds the sessions the user committed to.
+    const moved = d.absorbed === true;
     if (trained.length) entries.push({ ...at, kind: "done", name: trained.filter(Boolean).join(" + ") || null });
-    else if (d.date < todayKey) { if (d.bound) entries.push({ ...at, kind: d.rest ? "rest" : "open", name: null }); }
+    else if (d.date < todayKey) { if (d.bound) entries.push({ ...at, kind: d.rest || moved ? "rest" : "open", name: null, ...(moved ? { moved } : {}) }); }
     else if (d.date === todayKey) {
       if (todayTrains) entries.push({ ...at, kind: "today", name: up[k++] ?? null });
-      else if (d.committed && d.rest) entries.push({ ...at, kind: "rest", name: null });
-    } else if (d.committed) entries.push(d.rest ? { ...at, kind: "rest", name: null } : { ...at, kind: "planned", name: up[k++] ?? null });
+      else if (d.committed && (d.rest || moved)) entries.push({ ...at, kind: "rest", name: null, ...(moved ? { moved } : {}) });
+    } else if (d.committed) entries.push(d.rest || moved ? { ...at, kind: "rest", name: null, ...(moved ? { moved } : {}) } : { ...at, kind: "planned", name: up[k++] ?? null });
   }
   const shown = new Set(entries.flatMap((e) => (e.kind === "done" ? (weekPlan.days.find((x) => x.date === e.date)?.trained ?? []) : [e.name])).filter(Boolean));
   const next = up[k] ?? null;
@@ -219,7 +224,7 @@ export function weekChipLabel(e) {
   if (e?.kind === "done") return `${d} ✓${e.name ? ` ${e.name}` : ""}`;
   if (e?.kind === "today") return `Today · ${e.name ?? "your workout"}`;
   if (e?.kind === "planned") return `${d} · ${e.name ?? "workout"}`;
-  if (e?.kind === "rest") return `${d} 🌿 rest`;
+  if (e?.kind === "rest") return `${d} 🌿 rest${e.moved ? " (moved)" : ""}`;
   return `${d} –`;
 }
 // Does the next workout fall after a training block rolls over? (W277 review) Once a
@@ -244,9 +249,13 @@ export function nextSessionLine({ nextDay = null, todayKey, name, crossesBlock =
 // The hub row on a day off the plan, and the folded preview beneath it (W271 copy, now
 // block-aware): "next: Monday (Lower B)" would be a broken promise when a new block opens
 // Monday — what the preview shows is what "Train anyway" starts TODAY.
-export function offPlanLabel({ nextDay = null, name, crossesBlock = false } = {}) {
+// W328: `movedBy` (the off-plan day key that paid for today) and `weekDone` ({ n }, no weekly
+// plan) say WHY today is off, so a skipped rest day reads as moved, not forgotten.
+export function offPlanLabel({ nextDay = null, name, crossesBlock = false, movedBy = null, weekDone = null } = {}) {
   const when = DAY_LONG[nextDay?.day] ?? "your next training day";
-  return crossesBlock ? `Not a training day — next: ${when}, when a new training block starts` : `Not a training day — next: ${when} (${name})`;
+  if (weekDone?.n) return crossesBlock ? `Your ${weekDone.n} workouts are done this week — a new training block starts next` : `Your ${weekDone.n} workouts are done this week — rest up. Next: ${name}`;
+  const lead = movedBy && DAY_LONG[movedBy] ? `Rest day — you trained ${DAY_LONG[movedBy]} instead` : "Not a training day";
+  return crossesBlock ? `${lead} — next: ${when}, when a new training block starts` : `${lead} — next: ${when} (${name})`;
 }
 // The plan's size vs the days actually committed (W278, the owner's pick of option 1): the
 // server offers it (daily.plan_fit) once a different count has stood a week; this says
@@ -613,4 +622,72 @@ export function visibleStepFrom(steps, idx, answers) {
   for (let i = Math.max(0, Math.min(idx, steps.length - 1)); i < steps.length; i++) if (asked(i)) return i;
   for (let i = Math.min(idx, steps.length - 1); i >= 0; i--) if (asked(i)) return i;
   return 0;
+}
+
+// Why a replacement is offered where it is (W334 — owner: "Does the swap button choose a random exercise or does it pick
+// the next best option?"): the ranked engine's tier, in a few words. Tier 1 = the same movement family, tier 2 = the same
+// kind of lift for the same muscle, tier 3 = the other kind (an isolation for a compound, or the reverse). Pure.
+export function swapReason(tier, mechanic = null) {
+  if (tier === 1) return "same movement";
+  if (tier === 2) return "same muscle, different movement";
+  if (tier === 3) return mechanic === "isolation" ? "isolation instead" : mechanic === "compound" ? "compound instead" : "a different kind of lift";
+  return "";
+}
+
+// Move one row of a day up or down (W335 — owner: "I can't change the order of the exercises"). A superset pair is ONE
+// block: it moves together, and a single lift hops a pair whole (a partner split from its mate would be snapped back by
+// orderSupersetAdjacent anyway). Null at either edge — nothing to do. Never mutates. Pure.
+export function moveRow(rows, i, dir) {
+  if (!Array.isArray(rows) || !rows[i] || (dir !== -1 && dir !== 1)) return null;
+  const blockAt = (k) => {
+    const r = rows[k], m = r?.superset_with ? rows.findIndex((x, j) => j !== k && x.exercise === r.superset_with && x.superset_with === r.exercise) : -1;
+    return m >= 0 && Math.abs(m - k) === 1 ? [Math.min(k, m), Math.max(k, m)] : [k, k];
+  };
+  const [a, b] = blockAt(i);
+  if (dir === -1 ? a === 0 : b === rows.length - 1) return null;
+  const [c, d] = blockAt(dir === -1 ? a - 1 : b + 1);
+  const mine = rows.slice(a, b + 1), theirs = rows.slice(c, d + 1);
+  return dir === -1 ? [...rows.slice(0, c), ...mine, ...theirs, ...rows.slice(b + 1)] : [...rows.slice(0, a), ...theirs, ...mine, ...rows.slice(d + 1)];
+}
+
+// The single lifts on the "rather skip" list that no family chip on screen covers (W336 — a lift skipped with "Just not
+// for me" was counted in the Settings summary with no control to clear it). Each comes back as its own chip, so a stored
+// answer always has a control on screen that can clear it (the visibleStyles rule). Pure.
+export function avoidExtras(tp, families = [], nameOf = (id) => id) {
+  const covered = new Set(families.flatMap((f) => f.ids ?? []));
+  return [...new Set(tp?.avoid ?? [])].filter((id) => !covered.has(id)).map((id) => ({ id, label: nameOf(id) }));
+}
+
+// The main setup's name on the Today chip (W336): the one they gave it, else "Gym" for a kit with gym gear (a machine, a
+// cable or a barbell), else "Home" — and "Usual" if that name is already one of their other places. Pure.
+export function mainSetupName({ main_name = null, main_kit = [] } = {}, otherNames = []) {
+  if (main_name) return main_name;
+  const guess = (main_kit ?? []).some((x) => ["machine", "cable", "barbell"].includes(x)) ? "Gym" : "Home";
+  return (otherNames ?? []).some((n) => String(n).toLowerCase() === guess.toLowerCase()) ? "Usual" : guess;
+}
+
+// ONBOARDING, SAID PLAINLY (W337 — owner: "Some of the screens are more ambiguous than I'd like"). Hints that read the
+// answers already given, each pinned to the engine rule it describes so the copy can't drift from what the plan does.
+// The split a number of days produces, in the generator's own table (plan-core chooseSplit — test-ui-helpers checks
+// every days × status pair against it). Pure.
+export const SPLIT_FOR_DAYS = Object.freeze({ 2: "full-body", 3: { advanced: "upper-lower-full", "*": "full-body" }, 4: "upper-lower", 5: "push-pull-legs-upper-lower", 6: "push-pull-legs" });
+export function daysHint(days, status = "beginner") {
+  const d = Math.max(2, Math.min(6, Number(days) || 3));
+  const row = SPLIT_FOR_DAYS[d], split = typeof row === "string" ? row : row[status] ?? row["*"];
+  const what = { "full-body": `${d} full-body days — every muscle, every session`, "upper-lower-full": "upper, lower, then a full-body day", "upper-lower": "upper/lower — each muscle twice a week",
+    "push-pull-legs-upper-lower": "push, pull, legs, then upper and lower", "push-pull-legs": "push, pull, legs, twice through" }[split];
+  const lead = status === "beginner" ? "Pick what you can keep up — 3 you never miss beats 5 you sometimes do." : "Pick what you can reliably keep up.";
+  return `${lead} ${d} days → ${what}.`;
+}
+// What picking priority muscles does (plan-core deriveSpecialization: past the beginner stage, one or two body AREAS run a
+// real specialization block; three or more areas, a tilt — and a fat-loss phase funds no easing back up). The chips'
+// areas are the KB's muscle groups (PRIORITY_GROUPS — checked against data/muscles in test-ui-helpers). Pure.
+export const PRIORITY_GROUPS = Object.freeze({ "side-delts": "shoulders", chest: "chest", lats: "back", "upper-back": "back", biceps: "arms", triceps: "arms", glutes: "legs", quadriceps: "legs", abs: "core" });
+export function priorityConsequence(muscleIds = [], status = "beginner", goal = "hypertrophy", groupOf = PRIORITY_GROUPS) {
+  const ids = [...new Set(muscleIds ?? [])];
+  if (!ids.length) return { kind: "none", text: "Optional — skip it if nothing stands out." };
+  if (status === "beginner") return { kind: "beginner", text: "These get extra sets. A focused specialization block unlocks once you're past the beginner stage (I'll move you up as you log workouts)." };
+  const areas = new Set(ids.map((id) => groupOf[id] ?? id));
+  if (areas.size <= 2) return { kind: "block", text: `→ A focused 6-week block: these pushed hard, most other muscles eased back to pay for it${goal === "fat-loss" ? " (while you're losing fat they hold at a maintenance dose)" : " (most still grow slowly)"}.` };
+  return { kind: "tilt", text: "→ That's 3 or more areas, so a gentle tilt: a little more volume their way, nothing else cut back. Pick one or two for a focused block." };
 }

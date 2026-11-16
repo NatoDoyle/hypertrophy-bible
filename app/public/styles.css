@@ -49,6 +49,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .chip{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:4px 12px;margin:4px 6px 0 0;font-size:.85rem}
 /* A tappable chip in a multi-answer screen (W321's preferences): a full 44px target, filled when picked. */
 .chip.pick{color:var(--text);padding:10px 14px;margin:6px 6px 0 0;font-size:.95rem;min-height:44px;cursor:pointer}
+/* W331: the set-fix chips are the crash-safe correction path — a real touch target, like the picks */
+.chip.fix{color:var(--text);padding:10px 14px;min-height:44px;cursor:pointer}
 .chip.pick.sel{background:var(--accent);color:#06210f;border-color:var(--accent);font-weight:600}
 .pref-group{margin:14px 0 4px}
 .pref-group h3{margin:0;font-size:1rem}
@@ -70,7 +72,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .pr-toast b{font-size:1.05rem}
 
 /* Session player */
-.exhead{display:flex;justify-content:space-between;align-items:baseline}
+.exhead{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.exhead h1{flex:1}
+/* W331: "How do I do this?" lives beside the lift's name — one tap, no row of its own */
+.iconbtn{background:none;border:1px solid var(--line);color:var(--dim);border-radius:999px;min-width:44px;min-height:44px;font-size:1.1rem;cursor:pointer;align-self:center}
 .exhead .num{color:var(--dim);font-size:.85rem}
 .stepper{display:flex;align-items:center;justify-content:space-between;margin:12px 0}
 .stepper label{color:var(--dim);font-size:.9rem;width:70px}
@@ -94,7 +99,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .setdots{display:flex;gap:8px;margin:10px 0}
 .setdots i{flex:1;height:8px;border-radius:6px;background:var(--line)}
 .setdots i.done{background:var(--accent)}
-.timer{font-size:2.4rem;font-weight:800;text-align:center;margin:8px 0}
+.timer{font-size:4rem;font-weight:800;text-align:center;margin:8px 0;font-variant-numeric:tabular-nums} /* W331: read from across the gym */
 .cue{background:var(--card2);border-left:3px solid var(--accent2);padding:10px 12px;border-radius:8px;color:var(--dim);font-size:.92rem;margin:10px 0}
 
 /* Inline movement demo — v0 line-art stand-in for real footage (BLOCKERS #1): a

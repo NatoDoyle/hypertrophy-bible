@@ -144,6 +144,19 @@ one who normally PRs every 2 weeks and has gone flat for 5 is genuinely stalled.
     inherit the chips at Wave-164 graduation). "4+" stores 4, not 5 — `isHardSet` drops
     `rir > 4`, so 5 would erase the too-easy sets from volume and set the volume card
     ("add sets") against the effort card ("too easy") from a single tap.
+  - **W330 (owner, 2026-11: "the app doesn't seem to be aware of the RIR"): the chips are
+    on for everyone** (`hb_rir` is now on/off; off only when the lifter turns it off on Me),
+    and "4+" finally moves the load. Before, "4+" (= 4) could never reach the too-easy
+    thresholds written as band top + 2 (5 under every compound "1-3"), so the in-session
+    "heavier" hint never fired on RIR and the next-session bump was always one fixed
+    increment. Now: (a) "4+" counts as too easy under any band whose top + 2 no chip can say
+    (`nextSetHint`, `suggestWeight`); (b) the next-session bump is **sized by capacity** —
+    set 1's reps + RIR (4+ read as exactly 4, a floor) carried by Epley (`loadForReps`) to
+    the load that puts the range's top at the band's near edge, the same model the hint and
+    the below-range ease already use (`rir-autoregulation.json`: "load adjusted to hit target
+    RIR") — at least one increment, at most two or ~10%, and **one increment for a beginner**
+    (novice calls far from failure are the least accurate: proximity-to-failure.md,
+    `zourdos-2021-rir-accuracy`). The "Next time" line already says when RIR moved a weight.
   - **The lever** — `effortSignal` (derive-core): over the last 6 distinct trained weeks
     (the same window the volume tune samples), the average logged surplus above the band
     **the plan actually prescribed** (`effortBandTop(ex, goal)`). Under the hypertrophy

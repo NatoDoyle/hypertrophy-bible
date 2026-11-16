@@ -6,7 +6,7 @@
 // Currency is EFFECTIVE weekly hard sets (primary muscle = 1.0/set, secondary =
 // 0.5/set) — the exact same model as derive-core's perMuscleWeeklyVolume, which
 // we reuse for a closed-loop self-check so plan-time and log-time volume agree.
-import { perMuscleWeeklyVolume, volumeVsLandmarks, supportedCompound, repScheme, sessionMinutes as dayMinutes } from "./derive-core.mjs";
+import { perMuscleWeeklyVolume, volumeVsLandmarks, supportedCompound, repScheme, sessionMinutes as dayMinutes, setsInMinutes } from "./derive-core.mjs";
 
 // --- session archetypes: which muscles a session may train ---
 const ARCH = {
@@ -64,7 +64,7 @@ export const FIT_GRACE_MIN = 1;
 // `sessionCap` (W315b): the lifter's OWN ceiling, learned from their fade signals and accepted — "longer sessions" helps only
 // while the minutes, not that ceiling, bind.
 export const volumeLevers = ({ days, sessionMin, experience, timeBound, sessionCap = null } = {}) => {
-  const timeBinds = typeof timeBound === "boolean" ? timeBound : Math.round(clamp(sessionMin ?? 60, 30, 120) / 3) < qualityCapFor(experience, sessionCap);
+  const timeBinds = typeof timeBound === "boolean" ? timeBound : setsInMinutes(clamp(sessionMin ?? 60, 30, 120)) < qualityCapFor(experience, sessionCap);
   const dayBinds = (days ?? 2) < 6;
   if (dayBinds && timeBinds) return "an extra training day, or longer sessions, would let the plan give it more";
   if (dayBinds) return "an extra training day would let the plan give it more (extra session time would not help — each session already holds as much quality work as pays off)";
@@ -343,7 +343,7 @@ export function chooseSplit({ days_per_week, training_status }) {
   sessions.forEach((s) => { s.name = label[s.arch] + (multi[s.arch] > 1 ? " " + "ABCDEF"[s.letter - 1] : ""); s.of = multi[s.arch]; });
   return {
     split, sessions,
-    reason: `${days} days × ${training_status ?? "intermediate"} → ${/^[aeiou]/i.test(split) ? "an" : "a"} ${split} split, hitting each muscle ~${split === "full-body" ? days : 2}×/week within the 6–10 hard-sets-per-session quality window.`,
+    reason: `${days} days × ${training_status ?? "intermediate"} → ${/^[aeiou]/i.test(split) ? "an" : "a"} ${split} split, hitting each muscle ~${split === "full-body" ? days : 2}×/week, 6–10 hard sets a session — the range where each set still counts.`,
     citations: ["schoenfeld-2019-frequency-meta", "grgic-2018-frequency-strength"],
   };
 }
@@ -585,6 +585,56 @@ export function orderSessionItems(items, exById, { priority = new Set(), special
     return tier * 2 + (isPri ? 0 : 1);
   };
   return items.sort((a, b) => key(a) - key(b));
+}
+
+// THE LIFTER'S OWN ORDER (W335 — owner: "I can't change the order of the exercises", and chose: remember my order and
+// re-apply it whenever the plan rebuilds, so the plan keeps adapting). A day's order is stored as the lifter put it —
+// each entry the lift AND its slot's role (`m`: the muscle the slot is for; `k`: compound or isolation) — so it survives
+// a rotation, a stall swap or a "No machine" swap: a new lift takes the place of the one whose role it fills. Applied as
+// a pure permutation AFTER every content decision (the MRV trim and the fit-to-time pass read order), so a saved order
+// changes WHERE lifts sit, never WHICH lifts or how many sets. Pure.
+export function slotRole(sessionName, exId, choices, lookup) {
+  const c = (choices ?? []).find((x) => x.session === sessionName && x.exercise === exId);
+  const x = lookup?.get?.(exId);
+  return { m: c?.for_muscle ?? x?.primary_muscles?.[0] ?? null, k: x?.mechanic ?? null };
+}
+// The generator's own order for a day's rows: its ordering key (orderSessionItems, stable), ties in the order the
+// generator placed them (exercise_choices). What "Restore recommended order" puts back.
+export function recommendedSessionOrder(items, choices, sessionName, lookup, opts = {}) {
+  const at = (id) => { const i = (choices ?? []).findIndex((c) => c.session === sessionName && c.exercise === id); return i < 0 ? Infinity : i; };
+  const pre = (items ?? []).map((it, i) => [it, at(it.exercise), i]).sort((a, b) => (a[1] === b[1] ? 0 : a[1] < b[1] ? -1 : 1) || a[2] - b[2]).map((x) => x[0]);
+  return orderSessionItems(pre, lookup, opts);
+}
+export function applyOrderPref(items, entries, roleOf) {
+  if (!Array.isArray(items) || !Array.isArray(entries) || !entries.length) return items;
+  const roles = items.map((it) => roleOf(it.exercise) ?? {});
+  const rank = new Array(items.length).fill(null), claimed = new Set();
+  const passes = [
+    (e, j) => e?.ex === items[j].exercise,
+    (e, j) => e?.m != null && e.m === roles[j].m && e.k === roles[j].k,
+    (e, j) => e?.m != null && e.m === roles[j].m,
+  ];
+  for (const match of passes) for (let r = 0; r < entries.length; r++) {
+    if (claimed.has(r)) continue;
+    const j = items.findIndex((_, k) => rank[k] == null && match(entries[r], k));
+    if (j >= 0) { rank[j] = r; claimed.add(r); }
+  }
+  // A lift the saved order doesn't know follows the lift that came before it in the generator's order (or leads).
+  const key = items.map((_, i) => { if (rank[i] != null) return [rank[i], 0, i]; let prev = -1; for (let j = i - 1; j >= 0; j--) if (rank[j] != null) { prev = rank[j]; break; } return [prev, 1, i]; });
+  const sorted = items.map((_, i) => i).sort((a, b) => key[a][0] - key[b][0] || key[a][1] - key[b][1] || key[a][2] - key[b][2]).map((i) => items[i]);
+  // A superset pair stays side by side: the partner follows whichever of the two comes first.
+  const out = [], used = new Set();
+  for (const it of sorted) {
+    if (used.has(it)) continue;
+    out.push(it); used.add(it);
+    const mate = it.superset_with ? sorted.find((x) => x.exercise === it.superset_with && x.superset_with === it.exercise) : null;
+    if (mate && !used.has(mate)) { out.push(mate); used.add(mate); }
+  }
+  return out;
+}
+// The entries a day's current order is saved as (W335): each lift with its slot's role.
+export function orderEntries(items, choices, sessionName, lookup) {
+  return (items ?? []).map((it) => { const r = slotRole(sessionName, it.exercise, choices, lookup); return { ex: it.exercise, ...(r.m ? { m: r.m } : {}), ...(r.k ? { k: r.k } : {}) }; });
 }
 
 // A superset whose partner left the session (a trim, an edit, a swap) is not a
@@ -837,7 +887,8 @@ export function generatePlan(profile, kb, opts = {}) {
   const sessionMin = clamp(profile.session_length_min ?? 60, 30, 120);
   const sessionCap = Number.isInteger(opts.sessionCap) ? opts.sessionCap : null; // the lifter's own ceiling (W315b)
   const pace = opts.pace && typeof opts.pace === "object" ? opts.pace : null; // the lifter's own pace (W316): sizes the day
-  const setBudget = Math.min(Math.round(sessionMin / 3), qualityCapFor(experience, sessionCap)); // ~3 min/set incl. rest, capped for quality
+  const minuteSets = setsInMinutes(sessionMin, pace); // W329: 1 min work + 3 min rest a set by default; the lifter's own pace once learned
+  const setBudget = Math.min(minuteSets, qualityCapFor(experience, sessionCap)); // capped for quality
 
   // 2) weekly target per muscle
   // opts.volumeAdjust is the ADAPTIVE per-muscle delta (#2): how the user's own
@@ -1442,10 +1493,10 @@ export function generatePlan(profile, kb, opts = {}) {
     // non-competing isolations costs roughly half the rest, so two paired sets
     // add ~2 minutes, not ~6 — honest time math for the lifter whose session
     // length is the binding constraint.
-    // W303: only when MINUTES bound the set budget (round(min/3) < the quality cap) — a quality-capped day has no time to
+    // W303: only when MINUTES bound the set budget (setsInMinutes < the quality cap) — a quality-capped day has no time to
     // buy back — and its two sets count against that cap (they were never billed, so 39% of generated days ran past it).
     const qualityCap = qualityCapFor(experience, sessionCap);
-    if (setsUsed >= setBudget && items.length < EX_BUDGET && Math.round(sessionMin / 3) < qualityCap && setsUsed + 2 <= qualityCap) { // the rescue is a bonus exercise — still honour the per-session exercise cap
+    if (setsUsed >= setBudget && items.length < EX_BUDGET && minuteSets < qualityCap && setsUsed + 2 <= qualityCap) { // the rescue is a bonus exercise — still honour the per-session exercise cap
       const isoItems = items.filter((it) => exById.get(it.exercise)?.mechanic === "isolation" && !it.superset_with);
       outer: for (const m of order) {
         if ((credited[m] ?? 0) >= perTarget(m) || !isoPool[m].length) continue;
@@ -1749,6 +1800,12 @@ export function generatePlan(profile, kb, opts = {}) {
 
   const citations = [...new Set([...splitCites, ...exerciseChoices.flatMap((c) => c.citations), ...Object.values(volumeRationale).flatMap((r) => r.landmark?.citations ?? [])])];
   const goalLabel = { hypertrophy: "hypertrophy", strength: "strength", "fat-loss": "fat loss", recomposition: "recomposition" }[goal] ?? goal;
+  // W335: the lifter's own order per day — a pure permutation, applied only now that every content decision is made
+  // (the trims above read order). Absent → byte-identical.
+  if (opts.orderPref && typeof opts.orderPref === "object") for (const s of outSessions) {
+    const e = opts.orderPref[s.name];
+    if (Array.isArray(e) && e.length) s.exercises = applyOrderPref(s.exercises, e, (id) => slotRole(s.name, id, exerciseChoices, exById));
+  }
   const program = {
     id: "gen-" + seed.toString(36),
     name: `${split === "full-body" ? "Full Body" : split === "upper-lower" ? "Upper/Lower" : split === "push-pull-legs" ? "Push/Pull/Legs" : "Custom"} · ${sessionSpecs.length} days · ${goalLabel}`,
@@ -1890,8 +1947,9 @@ export function bestSubstitutes(exId, { profile, kb, program, rationale = null, 
   let session = program?.sessions?.find((s) => s.name === sessionName && s.exercises.some((e) => e.exercise === exId))
     ?? program?.sessions?.find((s) => s.exercises.some((e) => e.exercise === exId));
   let slot = session?.exercises.find((e) => e.exercise === exId);
-  // Today only: the lift may itself be a today-swap the stored plan never held.
-  if (!slot && scope === "today") {
+  // Today only: the lift may itself be a today-swap the stored plan never held. W334: the plan editor ("plan") too — its
+  // unsaved day may hold a lift the stored plan doesn't.
+  if (!slot && (scope === "today" || scope === "plan")) {
     session = program?.sessions?.find((s) => s.name === sessionName) ?? { name: sessionName, exercises: [] };
     slot = { exercise: exId, sets: 3 };
   }
@@ -1908,7 +1966,8 @@ export function bestSubstitutes(exId, { profile, kb, program, rationale = null, 
   const xFam = famOf(X.movement_pattern);
   const tierOf = (e) => (e.mechanic === X.mechanic ? (famOf(e.movement_pattern) === xFam ? 1 : 2) : 3);
   const ranked = (X.mechanic === "isolation" ? [...iso, ...comp] : [...comp, ...iso]).sort((a, b) => tierOf(a) - tierOf(b)); // stable: rank order within a tier
-  const others = scope === "today" && Array.isArray(live)
+  // The day as it stands: today's live workout, or (W334, scope "plan") the editor's unsaved day — the week cap still applies.
+  const others = (scope === "today" || scope === "plan") && Array.isArray(live)
     ? live.filter((id) => id !== exId).map((id) => session.exercises.find((e) => e.exercise === id) ?? { exercise: id, sets: slot.sets })
     : session.exercises.filter((e) => e.exercise !== exId);
   const st = sessionFit(others, lookup);
@@ -1930,6 +1989,45 @@ export function bestSubstitutes(exId, { profile, kb, program, rationale = null, 
     // generator's own pairing rule); anything else is swapped in unpaired.
     keeps_pair: !!partner && e.mechanic === "isolation" && ![...musclesOf(e)].some((m) => partnerMuscles.has(m)),
   }));
+}
+
+// WHERE YOU TRAIN TODAY (W336 — owner: "There's no way to alternate preferences like … 'I don't have this machine'";
+// chose: make the way back findable AND let them switch between setups such as home and gym). ONE plan stays the plan
+// (a rebuild per place would restart the training block and its rotation); a day served at another setup is ADAPTED:
+// each lift that setup can't do is replaced IN PLACE by the best fitting lift it can (bestSubstitutes, the ranked engine
+// every swap uses, judged against the day as it stands), keeping the slot's sets, reps and effort — and its pairing only
+// when the substitute is a non-competing isolation. A lift with nothing that fits is named, not silently kept. `profile`
+// is the setup's profile (its equipment and its own "not here" list). Returns { exercises, swaps:[{from,to}], missing }.
+// Never mutates. Pure.
+export function adaptSessionForSetup(program, rationale, sessionName, { profile, kb, stalled = [], customExercises = [], prefScores = null } = {}) {
+  const day = program?.sessions?.find((s) => s.name === sessionName);
+  if (!day) return { exercises: [], swaps: [], missing: [] };
+  const lookup = new Map([...kb.exercises, ...customExercises].map((e) => [e.id, e]));
+  const equip = new Set(profile?.available_equipment ?? []);
+  const notHere = excludedIds(profile);
+  const can = new Set(candidatePool(profile, kb, { includeCarries: true }).map((e) => e.id));
+  // A custom lift is the lifter's own: available where its equipment is (or wasn't said), unless that setup said "not here".
+  for (const c of customExercises ?? []) if (c?.id && !notHere.has(c.id) && (!c.equipment || c.equipment === "other" || equip.has(c.equipment))) can.add(c.id);
+  let rows = day.exercises.map((e) => ({ ...e }));
+  const swaps = [], missing = [];
+  for (const orig of day.exercises) {
+    const at = rows.findIndex((r) => r.exercise === orig.exercise);
+    if (at < 0 || can.has(orig.exercise)) continue;
+    const live = rows.map((r) => r.exercise);
+    const fitting = bestSubstitutes(orig.exercise, { profile, kb, program: { ...program, sessions: program.sessions.map((s) => (s.name === sessionName ? { ...s, exercises: rows } : s)) }, rationale, sessionName, stalled, live, scope: "today", customExercises, prefScores })
+      .filter((c) => c.fits && can.has(c.id) && !live.includes(c.id));
+    const slot = rows[at];
+    const partner = slot.superset_with ? rows.find((r) => r.exercise === slot.superset_with) : null;
+    const pick = (partner && fitting.find((c) => c.keeps_pair)) || fitting[0];
+    if (!pick) { missing.push(orig.exercise); rows = rows.filter((_, k) => k !== at); continue; }
+    const next = { ...slot, exercise: pick.id };
+    if (partner && pick.keeps_pair) { next.superset_with = partner.exercise; partner.superset_with = pick.id; }
+    else { delete next.superset_with; if (partner) delete partner.superset_with; }
+    rows[at] = next;
+    swaps.push({ from: orig.exercise, to: pick.id });
+  }
+  sweepDanglingSupersets([{ exercises: rows }]);
+  return { exercises: rows, swaps, missing };
 }
 
 // "Too tired for this one?" (Burst 6 — owner: "I was too tired after doing leg press and RDLs to do Bulgarian split
@@ -1967,7 +2065,7 @@ export function easierSubstitutes(fitting, exId, { kb, customExercises = [], kno
 // comparator (a user-ordered custom session keeps its order); and the rationale says
 // what really happened. Pure — returns { program, rationale, replaced, replaced_by } or
 // { error }, never mutating its inputs.
-export function applySubstitution(program, rationale, exId, { profile, kb, stalled = [], sessionName = null, customExercises = [], blockIndex = 0, specSpent = false } = {}) {
+export function applySubstitution(program, rationale, exId, { profile, kb, stalled = [], sessionName = null, customExercises = [], blockIndex = 0, specSpent = false, orderPref = null } = {}) {
   const prog = JSON.parse(JSON.stringify(program));
   const rat = rationale ? JSON.parse(JSON.stringify(rationale)) : null;
   const holding = prog.sessions.filter((s) => s.exercises.some((e) => e.exercise === exId));
@@ -2035,7 +2133,10 @@ export function applySubstitution(program, rationale, exId, { profile, kb, stall
       }
       replaced.push({ session: s.name, from: exId, to: pick.id });
     }
-    if (!prog.custom) orderSessionItems(s.exercises, lookup, { priority, specialization });
+    // W335: a day with the lifter's own order keeps it — the replacement takes the replaced lift's role, so its place.
+    const own = orderPref?.[s.name];
+    if (!prog.custom && Array.isArray(own) && own.length) s.exercises = applyOrderPref(recommendedSessionOrder(s.exercises, rat?.exercise_choices, s.name, lookup, { priority, specialization }), own, (id) => slotRole(s.name, id, rat?.exercise_choices, lookup));
+    else if (!prog.custom) orderSessionItems(s.exercises, lookup, { priority, specialization });
   }
   sweepDanglingSupersets(prog.sessions);
   if (rat?.volume_by_muscle) reprojectVolumes(prog, rat, kb, lookup);
@@ -2158,9 +2259,10 @@ export function explainPersonalization(profile, rationale, program, live = null)
       ? `compounds cycle ${bands.slice(0, -1).join(", ")} and ${bands[bands.length - 1]} reps across the week — each muscle gets a heavier and a lighter exposure instead of the same session twice`
       : !bands && undulates
         ? "compounds cycle through heavier and lighter rep ranges across the week — each muscle gets a different exposure each time rather than the same session twice"
-        : `compounds run ${(bands ?? [scheme.compound[0]])[0]} reps at ${scheme.compound[1]} reps in reserve`;
+        : `compounds run ${(bands ?? [scheme.compound[0]])[0]} reps, stopping ${scheme.compound[1]} reps short of failure (${scheme.compound[1]} reps in reserve)`;
+    // W337: said plainly — "0-1" alone was a number with no unit.
     say("primary_goal", GOAL_LABEL[r.goal_prescription.primary_goal] ?? r.goal_prescription.primary_goal,
-      `${compoundCopy}, isolations ${scheme.isolation?.[0]} at ${scheme.isolation?.[1]}.`);
+      `${compoundCopy}; isolation moves ${scheme.isolation?.[0]} reps, taken to within ${scheme.isolation?.[1]} reps of failure.`);
   }
 
   // The priority answer is the one the owner flagged: it must show its own arithmetic.
@@ -2211,7 +2313,8 @@ export function explainPersonalization(profile, rationale, program, live = null)
   const equip = p.available_equipment ?? [];
   if (equip.length && program?.sessions) {
     const lifts = new Set(program.sessions.flatMap((s) => s.exercises.map((e) => e.exercise)));
-    say("available_equipment", equip.join(", "),
+    const EQUIP_WORD = { barbell: "barbell", dumbbell: "dumbbells", machine: "machines", cable: "cables", bodyweight: "bodyweight", band: "bands", kettlebell: "kettlebells" };
+    say("available_equipment", equip.map((x) => EQUIP_WORD[x] ?? x).join(", "), // W337: words, not ids
       `all ${lifts.size} exercises in your week are ones you can actually do with this.`);
   }
 
@@ -2271,7 +2374,7 @@ const MUSCLE_LABEL = {
 // guard rail it was built to be. Structurally, a generated plan can't trip the
 // other checks anyway (the MRV trim, the coverage floor and the heavy-first sort
 // run at generation), so "generated" only re-frames the volume findings.
-export function critiquePlan(program, kb, { experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null, sessionCap = null } = {}) {
+export function critiquePlan(program, kb, { experience = "intermediate", priority = [], generated = false, sessionMinutes = null, trimmed = null, sessionCap = null, userOrdered = [] } = {}) {
   const prioritySet = new Set(priority);
   // Caveats must offer only levers that BIND for this user (volumeLevers) — the
   // binder passes sessionMinutes from the profile; without it the default-60
@@ -2347,7 +2450,13 @@ export function critiquePlan(program, kb, { experience = "intermediate", priorit
       const ex = exById.get(e.exercise);
       if (!ex) continue;
       if (ex.mechanic === "isolation") seenIso = true;
-      else if (seenIso) { add("info", `${s.name}: ${ex.name} (a compound) comes after an isolation — compounds usually go first while you're fresh.`, { session: s.name }); break; }
+      else if (seenIso) {
+        // W335: on a day the lifter ordered themselves, it's their call — said as such, with the way back.
+        add("info", (userOrdered ?? []).includes(s.name)
+          ? `${s.name}: you've put ${ex.name} (a compound) after an isolation. That's your order, and it's kept when the plan changes — compounds usually go first while you're fresh; "Restore recommended order" puts them back.`
+          : `${s.name}: ${ex.name} (a compound) comes after an isolation — compounds usually go first while you're fresh.`, { session: s.name, ...((userOrdered ?? []).includes(s.name) ? { own_order: true } : {}) });
+        break;
+      }
     }
   }
 

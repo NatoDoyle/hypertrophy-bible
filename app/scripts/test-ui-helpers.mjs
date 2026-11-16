@@ -193,6 +193,27 @@ check("weekStrip: fewer days than the plan has sessions — the next one is name
   assert.equal(weekStrip(null, { todayKey: "2026-10-05" }), null);
   assert.equal(weekStrip({ days: [], upcoming: [] }, { todayKey: "2026-10-05" }), null);
 });
+// W328 (owner: "skipped the rest day … now it's making me do five sessions for the week"):
+// a committed day an off-plan session paid for (week_plan.days[].absorbed, the server's ONE
+// rule) is a rest day on the strip and takes no session — four sessions, as committed.
+check("#W328 weekStrip: an off-plan Wednesday moves Thursday's rest — Mon ✓ | Tue ✓ | Wed ✓ | Thu rest (moved) | Fri Lower B", () => {
+  const ULd = ["mon", "tue", "thu", "fri"];
+  const days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((day, i) => ({ date: `2026-10-${String(5 + i).padStart(2, "0")}`, day, committed: ULd.includes(day), bound: ULd.includes(day), trained: [], rest: false }));
+  days[0].trained = ["Upper A"]; days[1].trained = ["Lower A"]; days[2].trained = ["Upper B"]; days[3].absorbed = true;
+  const four = ["Lower B", "Upper A", "Lower A", "Upper B", "Lower B", "Upper A", "Lower A", "Upper B"];
+  assert.deepEqual(strip({ days, upcoming: four }, { todayKey: "2026-10-08", hubState: "unplanned" }),
+    { line: "Mon ✓ Upper A | Tue ✓ Lower A | Wed ✓ Upper B | Thu 🌿 rest (moved) | Fri · Lower B", next_week: null });
+  // Seen from Wednesday evening, after the off-plan workout: Thursday already reads as rest.
+  assert.equal(strip({ days, upcoming: four }, { todayKey: "2026-10-07", hubState: "done" }).line,
+    "Mon ✓ Upper A | Tue ✓ Lower A | Wed ✓ Upper B | Thu 🌿 rest (moved) | Fri · Lower B");
+});
+check("#W328 the hub says WHY today is off: a moved rest day names the day that paid for it; a done week (no plan) says so", () => {
+  assert.equal(offPlanLabel({ nextDay: { day: "fri", date: "2026-10-09" }, name: "Lower B", movedBy: "wed" }), "Rest day — you trained Wednesday instead — next: Friday (Lower B)");
+  assert.equal(offPlanLabel({ nextDay: { day: "fri" }, name: "Lower B" }), "Not a training day — next: Friday (Lower B)", "unchanged without a reason");
+  assert.equal(offPlanLabel({ name: "Upper A", weekDone: { n: 4 } }), "Your 4 workouts are done this week — rest up. Next: Upper A");
+  assert.equal(hubWorkoutState({ daily: { week_done: { n: 4 } } }), "unplanned", "no plan, the week's sessions in: Train anyway, not Start");
+  assert.equal(hubWorkoutState({ daily: { week_done: { n: 4 }, workout_logged: true } }), "done");
+});
 // A training block's last week, once trained, rolls over next week to Day A (W277 review):
 // every line that names NEXT week's session must stop naming it — one predicate, three lines.
 check("crossesBlockEnd: only when the block rolls over AND the next workout is past this Sunday (or unknown)", () => {
@@ -857,8 +878,9 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   // Burst 6 — "Too tired for this one?": the first-screen line only through the pure offer; both doors (the line and the
   // sheet's first reason) one handler; a swap's trimmed dose and its Undo; the ease on the lift's KG step; nothing that
   // promises effort the slot's band doesn't ask for.
-  assert.match(appJs, /\$\{tiredOffer\(sess\) \? `<button class="btn ghost inline" id="tired"/);
-  assert.match(appJs, /if \(\$\("#tired"\)\) \$\("#tired"\)\.onclick = \(\) => tiredSwap\(\);/);
+  // W331: the tired door is the ONE "Change exercise" sheet's first reason (tiredOffer never fires where that door is
+  // absent — a superset leg or past set 1 — so no inline line remains: review).
+  assert.doesNotMatch(appJs, /id="tired"/);
   assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /\$\("#cd-tired"\)\.onclick = \(\) => tiredSwap\(\);/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 2500), /reason: "tired"/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 2500), /slot_of: cur\.slot_of \?\? null/);
@@ -882,7 +904,7 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   // "Target: 1 set"; a tired first-time lift isn't told it's finding its weight; after an easier day "last time" is named for
   // what it is; the bodyweight ease says "bodyweight"; the tired Undo brings a skip's own Undo back.
   assert.match(appJs, /const avg = l\.easyDay \? \(l\.rir_all \?\? l\.rir\) : l\.rir;/);
-  assert.match(appJs, /Target: \$\{setsN\(e\.sets\)\}/);
+  assert.match(appJs, /`\$\{setsN\(e\.sets\)\} × \$\{e\.rep_range\} reps`/, "W331: the target and today's aim are one line — '1 set' still singular");
   assert.match(appJs, /\$\{firstEver \? \(e\.tired \? \(e\.tried_easy \? `<div class="card info"><b>Still finding your weight, on a tired day 🎯<\/b>/);
   assert.match(appJs, /<b>New lift, on a tired day 🎯<\/b>/);
   assert.match(appJs, /\$\{e\.last_easy \? "Last regular session" : "Last time"\}:/);
@@ -912,7 +934,7 @@ check("player (W289): both reps steppers start on the per-set aim (repSeed, from
   assert.match(fnBody(appJs, "async function undoSwap() {", 1600), /\.\.\.\(back\.ok && u\.lastSkip \? \{ lastSkip: u\.lastSkip \} : \{\}\)/);
   assert.match(fnBody(appJs, "function easeInPlace(", 2500), /lastSkip: skip/);
   assert.match(fnBody(appJs, "async function tiredSwap() {", 3000), /lastSkip: sess\.lastSkip \?\? null/);
-  assert.match(appJs, /Today's aim: \$\{aim\.slice\(0, e\.sets\)\.join\(" · "\)\} reps/);
+  assert.match(appJs, /Aim <b id="rep-aim">\$\{aim\.slice\(0, e\.sets\)\.join\(" · "\)\}<\/b> reps/, "W331: the aim leads the one target line");
 });
 check("read-out wiring (W282): finish reads what happened BEFORE dropping the session, the recap shows it, and a queued workout's read-out reaches Today once it syncs", () => {
   const fin = fnBody(appJs, "async function finish() {", 5000);
@@ -942,11 +964,10 @@ check("W283 wiring: an offline Exercise library in Learn (its sheets come back t
   assert.match(lib, /from: "library"/);
   assert.match(fnBody(appJs, "async function renderLearnData(", 2500), /from === "library"/);
   assert.match(appJs, /const resetLearnNav = \(\) => \{[^}]*learnLibrary = false/);
-  // the three call sites, pinned exactly (W283 review: a comma-only check let `null` through)
+  // the call sites, pinned exactly (W283 review: a comma-only check let `null` through). W331: the demo lives only in the
+  // how-to sheet — the set screen and the superset station showed the same figure for every lift, unasked.
   assert.deepEqual((appJs.match(/renderMovementDemo\([^)]*\)/g) ?? []).sort(), [
     "renderMovementDemo(d?.movement_pattern ?? ex.movement_pattern, ex.exercise ?? d?.id)",
-    "renderMovementDemo(e.movement_pattern, e.exercise)",
-    "renderMovementDemo(m.movement_pattern, m.exercise)",
   ]);
   assert.match(fnBody(appJs, "function renderAddExercise(si) {", 2500), /!editState\.custom \?/);
   // W283 review: back from a sheet restores the reader's place and focus
@@ -1195,9 +1216,12 @@ check("#announce (W313) Today shows an announcement in its own card, never behin
 check("#fade (W314) the player marks a skip (an Undo takes it back) and an early end with work left; the workout carries the marks; the read-out asks how the last sets felt", () => {
   assert.match(fnBody(appJs, "function applySkip(r, redraw) {", 1800), /sess = withFade\(sess, "skip"\);/);
   assert.match(fnBody(appJs, "function wireSkipUndo(redraw) {", 600), /sess = dropLastFade\(u\.sess, "skip"\);/);
-  for (const h of ['$("#quit").onclick = () => {', '$("#quitr").onclick = () => {']) assert.match(fnBody(appJs, h, 900), /if \(!sess\.complete\) sess = withFade\(sess, "early"\);/, h);
+  // W332: both "Finish early" doors (and a skip that would end the workout) open ONE sheet, which writes the mark.
+  assert.match(appJs, /\$\("#quit"\)\.onclick = \(\) => renderFinishSheet\(\(\) => renderPlayer\(0\)\);/);
+  assert.match(appJs, /\$\("#quitr"\)\.onclick = \(\) => renderFinishSheet\(\(\) => renderSupersetStation\(L, P, 0\)\);/);
+  assert.match(fnBody(appJs, "function renderFinishSheet(back, { skip = null } = {}) {", 3500), /else if \(!sess\.complete\) sess = withFade\(sess, "early"\);/);
   assert.match(appJs, /targets: buildTargets\(sess\), fade_marks: fadeMarksAtFinish\(sess\)(, learning_paused: sess\.learningPaused === true)? \}/);
-  assert.match(appJs, /const feelRow = recap\.session_id && \(recap\.local\?\.done \?\? 0\) >= FEEL_MIN_SETS/);
+  assert.match(appJs, /const feelRow = recap\.session_id && !recap\.endReason && \(recap\.local\?\.done \?\? 0\) >= FEEL_MIN_SETS/, "W332: never re-asked after the finish sheet");
   assert.match(appJs, /api\("\/api\/session\/feel", \{ method: "POST", body: JSON\.stringify\(\{ user_id: uid, session_id: recap\.session_id, feel: b\.dataset\.feel \}\) \}\)/);
 });
 
@@ -1278,5 +1302,136 @@ check("#rev11-b11 the finished workout says whether learning was paused when it 
   assert.match(appJs, /fade_marks: fadeMarksAtFinish\(sess\), learning_paused: sess\.learningPaused === true \};/);
 });
 
+// W331 (owner: "assume every element could be improved — if any element is not adding considerable value remove it"):
+// the set screen has ONE primary action; the rest screen no tick-boxes; the fix chips are real touch targets.
+check("#W331 the set screen: one primary button (Done), one change door, no warm-up logger, no inline demo, a header how-to", () => {
+  const set = fnBody(appJs, "function renderPlayer() {", 12000);
+  const markup = set.slice(set.indexOf("app.innerHTML = `<div class=\"exhead\">"), set.indexOf("wireLearnLinks();"));
+  assert.equal((markup.match(/class="btn"/g) ?? []).length, 1, "exactly one primary");
+  assert.match(markup, /id="cantdo">⇄ Change exercise/);
+  assert.doesNotMatch(markup, /id="warmup"|id="later"|id="your-pick"|renderMovementDemo/);
+  assert.match(markup, /<button class="iconbtn" id="how"/);
+  assert.match(fnBody(appJs, "async function renderCantDo() {", 9000), /\$\("#cd-your-pick"\)\.onclick = \(\) => yourPickSwap\(\);/, "your pick lives in the sheet");
+});
+check("#W331 the rest screen: one readiness line, no tick-boxes; the fix chips 44px; the timer big enough to read across a gym", () => {
+  assert.doesNotMatch(appJs, /restcue|REST_CUES|wireRestCues/);
+  assert.match(css, /\.chip\.fix\{[^}]*min-height:44px/);
+  assert.match(fnBody(appJs, "function setChipsHtml(ids) {", 900), /class="chip fix"/);
+  assert.match(css, /\.timer\{font-size:4rem/);
+});
+check("#W332 Finish early: what happens first (done / left / weights kept), then an optional why; the end is saved BEFORE the reason; a last-set skip routes here", () => {
+  const sheet = fnBody(appJs, "function renderFinishSheet(back, { skip = null } = {}) {", 3500);
+  assert.match(sheet, /You've done <b>\$\{done\} of \$\{planned\}<\/b> sets/);
+  assert.match(sheet, /Unfinished lifts keep this weight next time/);
+  assert.match(sheet, /id="fin-save">Save and finish/);
+  assert.match(sheet, /Close — nothing to save/);
+  assert.match(sheet, /saveSess\(\);\n\s*renderFinishReason\(\);/, "the mark is saved before the reason is asked (crash-safe)");
+  const why = fnBody(appJs, "function renderFinishReason() {", 2500);
+  assert.match(why, /sess = setFadeReason\(sess, b\.dataset\.why\); saveSess\(\);/);
+  assert.match(why, /Skip — just save/);
+  assert.match(appJs, /if \(skipWouldFinish\(sess\)\) return renderFinishSheet\(/);
+  assert.doesNotMatch(appJs, /Tap again — save what you've done and end/, "the ambiguous two-tap end is gone");
+});
+check("#W333 a set on the wrong lift: the set editor offers exactly the moves session-core accepts, plus a two-tap remove; both bank handlers scan from the start too", () => {
+  const ed = fnBody(appJs, "function openSetEditor(idx, host, rerender) {", 9000);
+  assert.match(ed, /const ident = \{ exercise: entry0\.exercise, completed_at: entry0\.completed_at \?\? null \};/);
+  assert.match(ed, /const r = moveLoggedSet\(sess, idx, b\.dataset\.moveto, ident\);/);
+  assert.match(ed, /const r = removeLoggedSet\(sess, idx, ident\);/);
+  assert.match(ed, /sess\.ex\.filter\(\(x\) => moveLoggedSet\(sess, idx, x\.exercise, ident\)\.ok\)/, "only moves it would accept are offered");
+  assert.match(ed, /Tap again — remove this set/);
+  assert.match(fnBody(appJs, '$("#done").onclick = () => {', 4000), /const nx = nextOwedIndex\(sess\.logged, sess\.ex, sess\.i\);/);
+  assert.match(appJs, /delete sess\.lastRemoved; \/\/ a removed set's Undo belongs to the log as it was \(W333\)/);
+  assert.match(fnBody(appJs, "if (historyEdit) {", 5000), /return to && lifts\.some\(\(\[id\]\) => id === to\) \? \{ \.\.\.out, exercise: to \} : out;/, "History: move after the workout too");
+});
+check("#W334 the editor's swap: ranked, said why — never the old walk through the library in file order", () => {
+  const { swapReason } = uiHelpers;
+  assert.deepStrictEqual([swapReason(1), swapReason(2), swapReason(3, "isolation"), swapReason(3, "compound"), swapReason(3), swapReason(9)],
+    ["same movement", "same muscle, different movement", "isolation instead", "compound instead", "a different kind of lift", ""]);
+  assert.doesNotMatch(appJs, /poolFor/, "the file-order cycle is gone");
+  assert.match(appJs, /else if \(act === "swap"\) return renderEditSwap\(si, ei, critique\);/);
+  assert.match(fnBody(appJs, "async function renderEditSwap(si, ei, critique) {", 3000), /alternatives\?scope=plan&session=/);
+  assert.match(fnBody(appJs, "function swapUndoCard(e) {", 900), /the closest match that fits/);
+});
+check("#W332/W333 review fixes: 'Save and finish' ends the workout (complete) before the reason; the log changing under a rest re-syncs its alarm; History never saves an empty workout", () => {
+  assert.match(fnBody(appJs, "function renderFinishSheet(back, { skip = null } = {}) {", 4000), /sess = \{ \.\.\.sess, complete: true \};\n\s*saveSess\(\);\n\s*renderFinishReason\(\);/);
+  const ed = fnBody(appJs, "function openSetEditor(idx, host, rerender) {", 14000);
+  assert.equal((ed.match(/syncRestAlert\(\); \/\/ [^\n]*\(review\)/g) ?? []).length, 2, "after a move and after a removal");
+  assert.match(fnBody(appJs, "if (historyEdit) {", 6000), /if \(!sets\.length\) \{ say\("That removes the whole workout\."\);/);
+});
+check("#W335 moveRow: neighbours swap; a superset pair moves as one block and a single lift hops a pair whole; null at the edges; never mutates", () => {
+  const { moveRow } = uiHelpers;
+  const R = (id, mate = null) => ({ exercise: id, ...(mate ? { superset_with: mate } : {}) });
+  const ids = (rows) => rows?.map((r) => r.exercise).join(",") ?? null;
+  const rows = [R("a"), R("b"), R("c", "d"), R("d", "c"), R("e")];
+  assert.equal(ids(moveRow(rows, 1, -1)), "b,a,c,d,e");
+  assert.equal(ids(moveRow(rows, 0, -1)), null, "top edge");
+  assert.equal(ids(moveRow(rows, 4, 1)), null, "bottom edge");
+  assert.equal(ids(moveRow(rows, 2, -1)), "a,c,d,b,e", "the pair moves together");
+  assert.equal(ids(moveRow(rows, 3, -1)), "a,c,d,b,e", "from either member");
+  assert.equal(ids(moveRow(rows, 1, 1)), "a,c,d,b,e", "a single lift hops the pair whole");
+  assert.equal(ids(moveRow(rows, 4, -1)), "a,b,e,c,d");
+  assert.equal(ids(rows), "a,b,c,d,e", "the input is untouched");
+  assert.equal(moveRow(rows, 9, 1), null);
+  const set = fnBody(appJs, "function drawEdit(critique) {", 9000);
+  assert.match(set, /data-reorder="\$\{si\}"/);
+  assert.match(set, /api\(`\/api\/plan\/order`/);
+  assert.match(set, /Restore recommended order/);
+});
+check("#W336 the way back is findable, and other places are one chip away: avoidExtras, mainSetupName, the shared Bring-back renderer, the Today chip", () => {
+  const { avoidExtras, mainSetupName } = uiHelpers;
+  const fams = [{ ids: ["a", "b"] }];
+  assert.deepStrictEqual(avoidExtras({ avoid: ["a", "x", "x", "y"] }, fams, (id) => id.toUpperCase()), [{ id: "x", label: "X" }, { id: "y", label: "Y" }], "a lift no family chip covers gets its own control; never twice");
+  assert.deepStrictEqual(avoidExtras({}, fams), []);
+  assert.equal(mainSetupName({ main_kit: ["dumbbell", "machine"] }, []), "Gym");
+  assert.equal(mainSetupName({ main_kit: ["dumbbell"] }, ["Hotel"]), "Home");
+  assert.equal(mainSetupName({ main_kit: ["dumbbell"] }, ["home"]), "Usual", "never the same name as another place");
+  assert.equal(mainSetupName({ main_name: "Downtown", main_kit: [] }, []), "Downtown");
+  assert.match(fnBody(appJs, "async function renderPlan() {", 6000), /const \{ unavailableBlock, skippedBlock, learnedBlock \} = notUsingBlocks\(d\);/);
+  assert.match(fnBody(appJs, "async function renderNotUsing() {", 2000), /notUsingBlocks\(d\)/, "Settings uses the SAME renderer");
+  assert.match(appJs, /id="ts-notusing"/);
+  assert.match(appJs, /if \(\$\("#ts-notusing"\)\) \$\("#ts-notusing"\)\.onclick = \(\) => renderNotUsing\(\);/);
+  assert.match(appJs, /\$\("#ts-setups"\)\.onclick = \(\) => renderSetups\(\);/);
+  assert.match(appJs, /\$\{setupChip\(dy\)\}/);
+  assert.match(fnBody(appJs, "function setupChip(dy) {", 900), /if \(!st\?\.options\?\.length \|\| sess\) return "";/, "only with another place, never mid-workout");
+  assert.match(appJs, /bring it back on the Plan tab any time/);
+});
+{
+  const PC = await import("../../tools/plan-core.mjs");
+  const kbx = await import("../src/kb-data.mjs");
+  check("#W337 the days hint names the split the engine builds — every days × status pair (chooseSplit)", () => {
+    const ARCH = { "full-body": (d) => Array(d).fill("FULL"), "upper-lower-full": () => ["UPPER", "LOWER", "FULL"], "upper-lower": () => ["UPPER", "LOWER", "UPPER", "LOWER"],
+      "push-pull-legs-upper-lower": () => ["PUSH", "PULL", "LEGS", "UPPER", "LOWER"], "push-pull-legs": () => ["PUSH", "PULL", "LEGS", "PUSH", "PULL", "LEGS"] };
+    for (const d of [2, 3, 4, 5, 6]) for (const st of ["beginner", "intermediate", "advanced"]) {
+      const row = uiHelpers.SPLIT_FOR_DAYS[d], key = typeof row === "string" ? row : row[st] ?? row["*"];
+      assert.deepEqual(ARCH[key](d), PC.chooseSplit({ days_per_week: d, training_status: st }).sessions.map((x) => x.arch), `${d} × ${st}`);
+      assert.match(uiHelpers.daysHint(d, st), new RegExp(`^Pick what you can .*${d} days → `));
+    }
+  });
+  check("#W337 the priority hint says what the engine will do — every chip combination × status × goal (deriveSpecialization), and the chip areas ARE the KB's groups", () => {
+    const groups = new Map(kbx.muscles.map((m) => [m.id, m.group]));
+    for (const [id, g] of Object.entries(uiHelpers.PRIORITY_GROUPS)) assert.equal(g, groups.get(id), id);
+    const CHIPS = [["side-delts"], ["chest"], ["lats", "upper-back"], ["biceps", "triceps"], ["glutes"], ["quadriceps"], ["abs"]];
+    let n = 0;
+    for (let mask = 1; mask < 1 << CHIPS.length; mask++) for (const st of ["beginner", "intermediate", "advanced"]) for (const goal of ["hypertrophy", "fat-loss"]) {
+      const ids = CHIPS.filter((_, i) => mask & (1 << i)).flat();
+      const c = uiHelpers.priorityConsequence(ids, st, goal), spec = PC.deriveSpecialization({ priority_muscles: ids, training_status: st, primary_goal: goal }, kbx.muscles);
+      assert.equal(c.kind === "block", spec, `${ids} ${st} ${goal}: ${c.kind} vs ${spec}`);
+      if (st === "beginner") assert.equal(c.kind, "beginner");
+      if (c.kind === "block") assert.equal(/maintenance/.test(c.text), goal === "fat-loss", "fat-loss funds no easing — said so");
+      n++;
+    }
+    assert.ok(n > 700);
+    assert.equal(uiHelpers.priorityConsequence([], "advanced").kind, "none");
+  });
+  check("#W337 onboarding: same stored values, plain words, live hints; the plan-ready screen shows the beginner card only to beginners", () => {
+    assert.match(appJs, /q: "How long have you been lifting consistently\?", opts: \[\["Not yet, or under a year", "beginner"\], \["1–3 years", "intermediate"\], \["3\+ years", "advanced"\]\]/);
+    assert.match(appJs, /\["Build muscle and lose fat together", "recomposition",/);
+    assert.match(appJs, /hint: \(a, v\) => daysHint\(v, a\.training_status \?\? "beginner"\)/);
+    assert.match(appJs, /priorityConsequence\(\(a\.priority_muscles \?\? \[\]\)\.flat\(\)/);
+    assert.match(appJs, /const chosen = JSON\.stringify\(answers\[step\.key\] \?\? step\.def\);/, "recommended answer highlighted, never auto-advanced");
+    assert.match(appJs, /\$\{d\.beginner \? `<div class="card"><b>🚪 Never trained before\?<\/b>/);
+    assert.match(appJs, /Answer 8 quick questions/);
+  });
+}
 console.log(`\n${pass} ui-helper test(s) passed${fail ? `, ${fail} FAILED` : ""}.`);
 process.exit(fail ? 1 : 0);
