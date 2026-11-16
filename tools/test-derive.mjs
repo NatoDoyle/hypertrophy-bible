@@ -48,7 +48,7 @@ import {
   loadExerciseIndex,
   loadMuscleIndex,
 } from "./derive-metrics.mjs";
-import { commitmentForDay, plannedDayState, effectiveCommitment, weekFacts, commitmentStood } from "./derive-core.mjs";
+import { commitmentForDay, plannedDayState, effectiveCommitment, weekFacts, commitmentStood, weekAbsorbed } from "./derive-core.mjs";
 import { restSeconds, restTier, repsAtBand, paceAggregate, PACE_MAX_GAP_S, sessionMinutes, SESSION_PACE_DEFAULTS, itemsFromLog, paceModelCheck } from "./derive-core.mjs";
 import { readFileSync as readKbFile } from "node:fs";
 
@@ -1711,6 +1711,65 @@ check("#session-time paceModelCheck: the model's minutes for each real workout's
   check("#est an estimated set still counts as a set done: weekly hard-set volume includes it (completion counts include estimated sets)", () => {
     const v = D.perMuscleWeeklyVolume([{ date: "2026-10-06", sets: [{ exercise: "bench", set_type: "work", weight_kg: 100, reps: 8, ...est, rir_est: 2 }] }], ix);
     assert.equal(Object.values(v)[0].chest, 1);
+  });
+}
+
+// ---- W328: training on a rest day moves the rest day (#week-absorb) -----------------
+// Owner (2026-11): "It was supposed to be a rest day, but I … did the second upper workout
+// … Instead of programming tomorrow as a rest day, it now is suggesting my second lower
+// workout … making me do five sessions for the week, even though I only do four."
+{
+  const plan = { week: "2026-W46", days: ["mon", "tue", "thu", "fri"] }; // Mon 2026-11-09
+  const owner = { sessionDays: ["2026-11-09", "2026-11-10", "2026-11-11"], restDays: [] };
+  check("#week-absorb the owner's week: an off-plan Wednesday makes Thursday a rest day, Friday trains", () => {
+    const thu = plannedDayState(plan, "2026-11-12", owner);
+    assert.equal(thu.planned_today, false);
+    assert.deepEqual(thu.absorbed_today, { by: "2026-11-11", by_day: "wed" });
+    assert.deepEqual(thu.next, { day: "fri", date: "2026-11-13" });
+    assert.equal(thu.missed, null, "an absorbed day is never 'missed'");
+    // Seen from Wednesday evening (after training): Thursday is already off, next is Friday.
+    const wed = plannedDayState(plan, "2026-11-11", owner);
+    assert.deepEqual(wed.next, { day: "fri", date: "2026-11-13" });
+    const fri = plannedDayState(plan, "2026-11-13", owner);
+    assert.equal(fri.planned_today, true);
+    assert.equal(fri.missed, null);
+    assert.equal(fri.absorbed_today, null);
+  });
+  check("#week-absorb a catch-up absorbs nothing: training Wednesday for a missed Tuesday", () => {
+    const st = { sessionDays: ["2026-11-09", "2026-11-11"], restDays: [] };
+    assert.deepEqual(weekAbsorbed(commitmentForDay(plan, "2026-11-12"), "2026-11-12", st), []);
+    assert.equal(plannedDayState(plan, "2026-11-12", st).planned_today, true);
+  });
+  check("#week-absorb a rest-marked committed day spends the credit without absorbing another", () => {
+    const st = { sessionDays: ["2026-11-09", "2026-11-10", "2026-11-11"], restDays: ["2026-11-12"] };
+    assert.deepEqual(weekAbsorbed(commitmentForDay(plan, "2026-11-12"), "2026-11-12", st), []);
+    assert.equal(plannedDayState(plan, "2026-11-13", st).planned_today, true);
+  });
+  check("#week-absorb two off-plan days absorb two committed days, in order", () => {
+    // A Thu/Fri plan; trained Tue and Wed instead: both committed days are now rest days.
+    const b = weekAbsorbed({ days: ["thu", "fri"] }, "2026-11-11", { sessionDays: ["2026-11-10", "2026-11-11"], restDays: [] });
+    assert.deepEqual(b.map((x) => [x.date, x.by]), [["2026-11-12", "2026-11-10"], ["2026-11-13", "2026-11-11"]]);
+  });
+  check("#week-absorb never crosses the ISO week: Sunday's off-plan session doesn't absorb next Monday", () => {
+    const sun = { sessionDays: ["2026-11-15"], restDays: [] };
+    const mon = plannedDayState({ week: "2026-W46", days: ["mon", "wed"] }, "2026-11-16", sun);
+    assert.equal(mon.planned_today, true);
+    assert.equal(mon.absorbed_today, null);
+  });
+  check("#week-absorb a plan made mid-week makes no claim on — and earns no credit from — the days before it", () => {
+    const made = { week: "2026-W46", set_on: "2026-11-12", days: ["mon", "fri"] };
+    const st = { sessionDays: ["2026-11-10"], restDays: [] }; // Tuesday, before the plan existed
+    assert.equal(plannedDayState(made, "2026-11-13", st).planned_today, true);
+    assert.deepEqual(weekAbsorbed(commitmentForDay(made, "2026-11-13"), "2026-11-13", st), []);
+  });
+  check("#week-absorb a double day on a committed day is one day, not a credit", () => {
+    const st = { sessionDays: ["2026-11-09", "2026-11-09"], restDays: [] };
+    assert.equal(plannedDayState(plan, "2026-11-10", st).planned_today, true);
+  });
+  check("#week-absorb weekFacts marks the absorbed day (the strip's fact) and nothing else changes shape", () => {
+    const f = weekFacts(plan, "2026-11-12", { trained: owner.sessionDays.map((date, i) => ({ date, name: ["Upper A", "Lower A", "Upper B"][i] })), restDays: [] });
+    assert.deepEqual(f.days.filter((d) => d.absorbed).map((d) => d.date), ["2026-11-12"]);
+    assert.equal("absorbed" in f.days[4], false, "a day not absorbed carries no key (byte-identical otherwise)");
   });
 }
 

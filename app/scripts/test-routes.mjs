@@ -2065,6 +2065,28 @@ try {
   ok("#weekly-plan a paused (sick/injured) user is never told they missed a day — rail #1", sickWed?.missed_planned_day === null);
   const noPlanToday = (await (await app.request("/api/today?d=2026-10-07", { headers: { "X-HB-User": cUser } })).json()).daily;
   ok("#weekly-plan no commitment → no planned-day fields claim anything", noPlanToday?.planned_today === null && noPlanToday?.next_planned_day === null);
+  // W328 (owner: "I skipped the rest day … now it's making me do five sessions for the week"):
+  // through the door the client uses — an off-plan Wednesday makes Thursday a rest day.
+  {
+    const abUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 4, available_equipment: ["bodyweight"] } })).data.user_id;
+    await store.updateUser(abUser, (u) => { u.profile.commitment = { week: "2026-W41", days: ["mon", "tue", "thu", "fri"], set_on: "2026-10-05" }; return u; });
+    for (const d of ["2026-10-05", "2026-10-06", "2026-10-07"]) await json("POST", "/api/session", { user_id: abUser, session_id: `ab-${d}`, date: `${d}T10:00:00Z`, local_date: d, sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+    const thu = await (await app.request("/api/today?d=2026-10-08", { headers: { "X-HB-User": abUser } })).json();
+    const tdy = thu.daily;
+    ok("#W328 /api/today: an off-plan Wednesday absorbs Thursday — not a planned day, nothing missed, Friday next, the day that paid named",
+      tdy?.planned_today === false && tdy?.missed_planned_day === null && tdy?.next_planned_day?.date === "2026-10-09" && tdy?.absorbed_today?.by_day === "wed", JSON.stringify(tdy && { p: tdy.planned_today, m: tdy.missed_planned_day, n: tdy.next_planned_day, a: tdy.absorbed_today }));
+    ok("#W328 …the week strip's facts mark Thursday absorbed (and only Thursday), and a session is still served (Train anyway)",
+      JSON.stringify((tdy?.week_plan?.days ?? []).filter((d) => d.absorbed).map((d) => d.date)) === JSON.stringify(["2026-10-08"]) && Array.isArray(thu.session?.exercises) && thu.session.exercises.length > 0);
+    const fri = (await (await app.request("/api/today?d=2026-10-09", { headers: { "X-HB-User": abUser } })).json()).daily;
+    ok("#W328 …and Friday is a planned day again", fri?.planned_today === true && fri?.absorbed_today === null);
+    // No weekly plan: once days_per_week distinct days are in, the week is done (informational).
+    const wdUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
+    for (const d of ["2026-10-05", "2026-10-06", "2026-10-07"]) await json("POST", "/api/session", { user_id: wdUser, session_id: `wd-${d}`, date: `${d}T10:00:00Z`, local_date: d, sets: [{ set_type: "work", weight_kg: 0, reps: 10 }] });
+    const wdThu = (await (await app.request("/api/today?d=2026-10-08", { headers: { "X-HB-User": wdUser } })).json()).daily;
+    const wdWed = (await (await app.request("/api/today?d=2026-10-07", { headers: { "X-HB-User": wdUser } })).json()).daily;
+    ok("#W328 no weekly plan: three of three days in → Thursday reads week_done; the day you trained doesn't",
+      wdThu?.week_done?.n === 3 && wdThu?.planned_today === null && wdWed?.week_done === null, JSON.stringify([wdThu?.week_done, wdWed?.week_done]));
+  }
   // set_on: the day the promise was made, in the CALLER's frame — days before it are never "missed".
   const soUser = (await json("POST", "/api/onboard", { profile: { training_status: "intermediate", primary_goal: "hypertrophy", days_per_week: 3, available_equipment: ["bodyweight"] } })).data.user_id;
   const soRes = await app.request("/api/commitment", { method: "POST", headers: { "content-type": "application/json", "X-HB-TZ": "-420" }, body: JSON.stringify({ user_id: soUser, days: ["mon"] }) });

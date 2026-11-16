@@ -1753,7 +1753,7 @@ async function renderToday() {
     { key: "workout", icon: "🏋️", label: "Today's workout",
       sub: workoutDone ? `Logged — nice.${nextLine ? ` ${esc(nextLine)}` : ""}` : hubState === "missed" ? `Missed ${DAY_LONG[dy.missed_planned_day.day]}? Catch up today — ${esc(s.name)}` : esc(s.name),
       done: workoutDone, dismissed: restDay || unplanned,
-      dismissedLabel: unplanned ? esc(offPlanLabel({ nextDay: dy.next_planned_day, name: s.name, crossesBlock })) : "Rest day — recovery is training too",
+      dismissedLabel: unplanned ? esc(offPlanLabel({ nextDay: dy.next_planned_day, name: s.name, crossesBlock, movedBy: dy.absorbed_today?.by_day ?? null, weekDone: dy.week_done ?? null })) : "Rest day — recovery is training too",
       cta: unplanned ? "Train anyway" : "Start", action: workoutDone ? null : changeLink },
     { key: "calories", icon: "🌙", label: "Today's calories", sub: dy.calories_logged ? "Logged." : "Enter your day's total", done: dy.calories_logged, cta: "Log" },
   ];

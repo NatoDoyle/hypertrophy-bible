@@ -5,7 +5,7 @@ import {
   bodyweightTrend, classifyEnergyBalance, proximityFromRepDropoff, stallDetect, volumeResponse,
   deriveVolumeAdjust, recoverySignal, progressionCadence, adaptiveStallWindow, isoWeekKeyLocal, sessionWeekKey, peakWeeklyVolume,
   detectPersonalRecords, priorPersonalBests, PR_XP, allPersonalRecords, luckySetsInSession, LUCKY_SET_XP,
-  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, EMPTY_BAR_LB_KG, repsEstimated, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
+  interferenceSignal, regressionDetect, trainedWeeksInBlock, effortSignal, restSeconds, loadForReps, repsAtBand, anchorSets, EMPTY_BAR_KG, repTargets, priorOverlapSets, orderLoss, contextLoad, EMPTY_BAR_LB_KG, repsEstimated, ORDER_MIN_DELTA_SETS, completionShortfall, graduatedStatus, WEEK_DAY_KEYS, weekDayKey, commitmentForDay, weekAbsorbed, sessionDayKey, localDayKey, shiftDayKey, sessionMinutes } from "../../tools/derive-core.mjs";
 import { exIndex, muscleIndex, exerciseById, exerciseName, muscleById, guidelineById } from "./kb.mjs";
 import { qualityCapFor } from "../../tools/plan-core.mjs";
 import { sessionTolerance, restAdapt } from "../../tools/response-core.mjs";
@@ -1321,7 +1321,11 @@ function slotsLeftThisWeek(user, sessions, todayKey) {
   if (!todayKey) return 0;
   const wd = WEEK_DAY_KEYS.indexOf(weekDayKey(todayKey));
   const eff = commitmentForDay(user.profile?.commitment, todayKey);
-  if (eff) return eff.days.filter((d) => { const k = WEEK_DAY_KEYS.indexOf(d); return k > wd && !(user.rest_days ?? []).includes(shiftDayKey(todayKey, k - wd)); }).length;
+  if (eff) {
+    // W328: a committed day an off-plan session already paid for holds no slot.
+    const absorbed = new Set(weekAbsorbed(eff, todayKey, { sessionDays: sessions.map(sessionDayKey).filter(Boolean), restDays: user.rest_days ?? [] }).map((a) => a.date));
+    return eff.days.filter((d) => { const k = WEEK_DAY_KEYS.indexOf(d); const date = shiftDayKey(todayKey, k - wd); return k > wd && !(user.rest_days ?? []).includes(date) && !absorbed.has(date); }).length;
+  }
   const monday = shiftDayKey(todayKey, -wd);
   const trained = new Set(sessions.map(sessionDayKey).filter((d) => d && d >= monday && d <= todayKey)).size;
   return Math.max(0, Math.min(6 - wd, (user.profile?.days_per_week ?? 3) - trained));

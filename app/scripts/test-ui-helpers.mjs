@@ -193,6 +193,27 @@ check("weekStrip: fewer days than the plan has sessions — the next one is name
   assert.equal(weekStrip(null, { todayKey: "2026-10-05" }), null);
   assert.equal(weekStrip({ days: [], upcoming: [] }, { todayKey: "2026-10-05" }), null);
 });
+// W328 (owner: "skipped the rest day … now it's making me do five sessions for the week"):
+// a committed day an off-plan session paid for (week_plan.days[].absorbed, the server's ONE
+// rule) is a rest day on the strip and takes no session — four sessions, as committed.
+check("#W328 weekStrip: an off-plan Wednesday moves Thursday's rest — Mon ✓ | Tue ✓ | Wed ✓ | Thu rest (moved) | Fri Lower B", () => {
+  const ULd = ["mon", "tue", "thu", "fri"];
+  const days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((day, i) => ({ date: `2026-10-${String(5 + i).padStart(2, "0")}`, day, committed: ULd.includes(day), bound: ULd.includes(day), trained: [], rest: false }));
+  days[0].trained = ["Upper A"]; days[1].trained = ["Lower A"]; days[2].trained = ["Upper B"]; days[3].absorbed = true;
+  const four = ["Lower B", "Upper A", "Lower A", "Upper B", "Lower B", "Upper A", "Lower A", "Upper B"];
+  assert.deepEqual(strip({ days, upcoming: four }, { todayKey: "2026-10-08", hubState: "unplanned" }),
+    { line: "Mon ✓ Upper A | Tue ✓ Lower A | Wed ✓ Upper B | Thu 🌿 rest (moved) | Fri · Lower B", next_week: null });
+  // Seen from Wednesday evening, after the off-plan workout: Thursday already reads as rest.
+  assert.equal(strip({ days, upcoming: four }, { todayKey: "2026-10-07", hubState: "done" }).line,
+    "Mon ✓ Upper A | Tue ✓ Lower A | Wed ✓ Upper B | Thu 🌿 rest (moved) | Fri · Lower B");
+});
+check("#W328 the hub says WHY today is off: a moved rest day names the day that paid for it; a done week (no plan) says so", () => {
+  assert.equal(offPlanLabel({ nextDay: { day: "fri", date: "2026-10-09" }, name: "Lower B", movedBy: "wed" }), "Rest day — you trained Wednesday instead — next: Friday (Lower B)");
+  assert.equal(offPlanLabel({ nextDay: { day: "fri" }, name: "Lower B" }), "Not a training day — next: Friday (Lower B)", "unchanged without a reason");
+  assert.equal(offPlanLabel({ name: "Upper A", weekDone: { n: 4 } }), "Your 4 workouts are done this week — rest up. Next: Upper A");
+  assert.equal(hubWorkoutState({ daily: { week_done: { n: 4 } } }), "unplanned", "no plan, the week's sessions in: Train anyway, not Start");
+  assert.equal(hubWorkoutState({ daily: { week_done: { n: 4 }, workout_logged: true } }), "done");
+});
 // A training block's last week, once trained, rolls over next week to Day A (W277 review):
 // every line that names NEXT week's session must stop naming it — one predicate, three lines.
 check("crossesBlockEnd: only when the block rolls over AND the next workout is past this Sunday (or unknown)", () => {

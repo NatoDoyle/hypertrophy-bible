@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { exerciseById, muscleById, programs, contraindications } from "./kb.mjs";
 import { buildToday, sessionIndexFor, todayCard, rotationState, upcomingSessions, isPermutation, sessionRecap, sessionReadout, progressReport, nerdReport, dailyReadiness, swapStalls, screenPlan, reactiveDeloadStampDue, blockTuneDecision, BLOCK_WEEKS , sessionCapOffer, listedLearnedOut, sparedMuscles, isCompoundLift, stalledExerciseIds } from "./coach.mjs";
-import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
+import { classifyEnergyBalance, bodyweightTrend, isoWeekKeyLocal, weekHasPassed, WEEK_DAY_KEYS, graduatedStatus, trainedWeeksInBlock, localDayKey, shiftDayKey, weekDayKey, commitmentForDay, commitmentStood, plannedDayState, weekFacts, sessionDayKey, restSeconds, restTier, paceAggregate, paceModelCheck } from "../../tools/derive-core.mjs";
 import { requestMagicLink, consumeMagicLink, consumeMagicCode, sha256hex } from "./auth.mjs";
 import { generateUserPlan, planOptsFor, learnedMeta, sanitizeTrainingPrefs, userTimeFit, userTimeFitQuestion, critiqueUserPlan, userExercises, explainUserPlan, injuryRegionFor, userSubstitutes, userEasierSubstitutes, userApplySubstitution, sweepDanglingSupersets, contentSig } from "./planner.mjs";
 import { SPEC_MAX_BLOCKS, qualityCapFor, PREF_AVOID_MAX } from "../../tools/plan-core.mjs";
@@ -1337,6 +1337,12 @@ export function createApp(store, config = {}) {
       // Rail #1: a paused (sick/injured) user is never told they missed a day.
       missed_planned_day: user.paused ? null : (plan?.missed ?? null),
       commitment_days: plan?.days ?? null,
+      // W328: today is a committed day an off-plan session already paid for — a rest day
+      // now ({ by, by_day }: the day that paid), so the week holds the sessions committed.
+      absorbed_today: plan?.absorbed_today ?? null,
+      // W328, no weekly plan: the week's sessions (days_per_week distinct days) are in and
+      // today isn't one of them. Informational — "Train anyway" still starts the workout.
+      week_done: !plan && !user.paused ? weekDoneFor(user, sessions, clientDay) : null,
     });
     // exercise_units rides the boot request so a NEW device inherits the account's
     // per-exercise kg/lb overrides; the client only seeds from it when it holds none.
@@ -1406,6 +1412,16 @@ export function createApp(store, config = {}) {
     }
     return c.json({ card: todayCard(user, sessions), session, daily, exercise_units: user.profile?.exercise_units ?? {} });
   });
+
+  // W328 (no weekly plan): { n } once this ISO week already holds days_per_week distinct
+  // trained days and today isn't one of them; else null. Date-only, in the client's day.
+  const weekDoneFor = (user, sessions, todayKey) => {
+    const n = Number(user.profile?.days_per_week);
+    if (!Number.isInteger(n) || n < 1 || !todayKey) return null;
+    const monday = shiftDayKey(todayKey, -WEEK_DAY_KEYS.indexOf(weekDayKey(todayKey)));
+    const days = new Set(sessions.map(sessionDayKey).filter((d) => d && d >= monday && d <= todayKey));
+    return !days.has(todayKey) && days.size >= n ? { n } : null;
+  };
 
   // ONE shape for a commitment wherever it's returned (the save and the read), so a
   // round-trip is byte-identical: the stored fields plus whether it's carried.

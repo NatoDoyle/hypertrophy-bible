@@ -173,6 +173,8 @@ export function hubWorkoutState({ daily = {}, session = {}, status = {} } = {}) 
   // Rail #1: a paused (sick/injured) user is promised no pressure — never "missed".
   if (daily.missed_planned_day && status.state !== "paused") return "missed";
   if (daily.planned_today === false) return "unplanned";
+  // W328, no weekly plan: the week's sessions are already in — today steps back the same way.
+  if (daily.week_done) return "unplanned";
   return "start";
 }
 
@@ -203,12 +205,15 @@ export function weekStrip(weekPlan, { todayKey, hubState = null, blockEnds = fal
   for (const d of weekPlan.days) {
     const trained = Array.isArray(d.trained) ? d.trained : [];
     const at = { day: d.day, date: d.date };
+    // W328: a committed day an off-plan session paid for is a rest day — it takes no
+    // session from the rotation, so the week holds the sessions the user committed to.
+    const moved = d.absorbed === true;
     if (trained.length) entries.push({ ...at, kind: "done", name: trained.filter(Boolean).join(" + ") || null });
-    else if (d.date < todayKey) { if (d.bound) entries.push({ ...at, kind: d.rest ? "rest" : "open", name: null }); }
+    else if (d.date < todayKey) { if (d.bound) entries.push({ ...at, kind: d.rest || moved ? "rest" : "open", name: null, ...(moved ? { moved } : {}) }); }
     else if (d.date === todayKey) {
       if (todayTrains) entries.push({ ...at, kind: "today", name: up[k++] ?? null });
-      else if (d.committed && d.rest) entries.push({ ...at, kind: "rest", name: null });
-    } else if (d.committed) entries.push(d.rest ? { ...at, kind: "rest", name: null } : { ...at, kind: "planned", name: up[k++] ?? null });
+      else if (d.committed && (d.rest || moved)) entries.push({ ...at, kind: "rest", name: null, ...(moved ? { moved } : {}) });
+    } else if (d.committed) entries.push(d.rest || moved ? { ...at, kind: "rest", name: null, ...(moved ? { moved } : {}) } : { ...at, kind: "planned", name: up[k++] ?? null });
   }
   const shown = new Set(entries.flatMap((e) => (e.kind === "done" ? (weekPlan.days.find((x) => x.date === e.date)?.trained ?? []) : [e.name])).filter(Boolean));
   const next = up[k] ?? null;
@@ -219,7 +224,7 @@ export function weekChipLabel(e) {
   if (e?.kind === "done") return `${d} ✓${e.name ? ` ${e.name}` : ""}`;
   if (e?.kind === "today") return `Today · ${e.name ?? "your workout"}`;
   if (e?.kind === "planned") return `${d} · ${e.name ?? "workout"}`;
-  if (e?.kind === "rest") return `${d} 🌿 rest`;
+  if (e?.kind === "rest") return `${d} 🌿 rest${e.moved ? " (moved)" : ""}`;
   return `${d} –`;
 }
 // Does the next workout fall after a training block rolls over? (W277 review) Once a
@@ -244,9 +249,13 @@ export function nextSessionLine({ nextDay = null, todayKey, name, crossesBlock =
 // The hub row on a day off the plan, and the folded preview beneath it (W271 copy, now
 // block-aware): "next: Monday (Lower B)" would be a broken promise when a new block opens
 // Monday — what the preview shows is what "Train anyway" starts TODAY.
-export function offPlanLabel({ nextDay = null, name, crossesBlock = false } = {}) {
+// W328: `movedBy` (the off-plan day key that paid for today) and `weekDone` ({ n }, no weekly
+// plan) say WHY today is off, so a skipped rest day reads as moved, not forgotten.
+export function offPlanLabel({ nextDay = null, name, crossesBlock = false, movedBy = null, weekDone = null } = {}) {
   const when = DAY_LONG[nextDay?.day] ?? "your next training day";
-  return crossesBlock ? `Not a training day — next: ${when}, when a new training block starts` : `Not a training day — next: ${when} (${name})`;
+  if (weekDone?.n) return crossesBlock ? `Your ${weekDone.n} workouts are done this week — a new training block starts next` : `Your ${weekDone.n} workouts are done this week — rest up. Next: ${name}`;
+  const lead = movedBy && DAY_LONG[movedBy] ? `Rest day — you trained ${DAY_LONG[movedBy]} instead` : "Not a training day";
+  return crossesBlock ? `${lead} — next: ${when}, when a new training block starts` : `${lead} — next: ${when} (${name})`;
 }
 // The plan's size vs the days actually committed (W278, the owner's pick of option 1): the
 // server offers it (daily.plan_fit) once a different count has stood a week; this says

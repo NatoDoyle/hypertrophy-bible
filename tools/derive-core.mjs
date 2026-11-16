@@ -458,11 +458,16 @@ export function plannedDayState(stored, todayKey, { sessionDays = [], restDays =
   const eff = commitmentForDay(stored, todayKey);
   if (!eff) return null;
   const todayIdx = WEEK_DAY_KEYS.indexOf(weekDayKey(todayKey));
-  const planned_today = eff.days.includes(WEEK_DAY_KEYS[todayIdx]);
+  // W328: a committed day an off-plan session already paid for is a REST day now — the
+  // week holds the number of sessions the user committed to, not one more.
+  const absorbed = weekAbsorbed(eff, todayKey, { sessionDays, restDays });
+  const absorbedOn = new Map(absorbed.map((a) => [a.date, a]));
+  const absorbedToday = absorbedOn.get(todayKey) ?? null;
+  const planned_today = eff.days.includes(WEEK_DAY_KEYS[todayIdx]) && !absorbedToday;
   let next = null;
   for (let i = 1; i <= 7 && !next; i++) {
     const d = shiftDayKey(todayKey, i);
-    if (eff.days.includes(weekDayKey(d))) next = { day: weekDayKey(d), date: d };
+    if (eff.days.includes(weekDayKey(d)) && !absorbedOn.has(d)) next = { day: weekDayKey(d), date: d };
   }
   const monday = shiftDayKey(todayKey, -todayIdx);
   const boundFrom = commitmentBoundFrom(eff, monday);
@@ -471,11 +476,43 @@ export function plannedDayState(stored, todayKey, { sessionDays = [], restDays =
     const d = shiftDayKey(todayKey, -i);
     if (!eff.days.includes(weekDayKey(d))) continue;
     if (d < boundFrom) break;
-    const answered = sessionDays.some((x) => x >= d && x < todayKey) || restDays.some((x) => x >= d && x < todayKey);
+    const answered = absorbedOn.has(d) || sessionDays.some((x) => x >= d && x < todayKey) || restDays.some((x) => x >= d && x < todayKey);
     if (!answered) missed = { day: weekDayKey(d), date: d };
     break;
   }
-  return { days: eff.days, carried: eff.carried, planned_today, next, missed };
+  return { days: eff.days, carried: eff.carried, planned_today, next, missed, absorbed_today: absorbedToday ? { by: absorbedToday.by, by_day: weekDayKey(absorbedToday.by) } : null };
+}
+
+// Training AHEAD of the plan (W328, owner: "I skipped the rest day and did my second upper
+// workout … now it's making me do five sessions for the week, even though I only do four").
+// The mirror of the catch-up rule above: a session on a day OFF the plan either pays back a
+// committed day already missed this week (a catch-up — absorbs nothing), or earns a credit
+// that the next committed day with no training spends — that day becomes a rest day
+// ("absorbed"). A rest-marked committed day spends a credit without being marked. Bounded to
+// the ISO week around `todayKey` and to the days the commitment binds (a plan made Thursday
+// makes no claim on — and earns no credit from — Monday). Pure, date-only. Returns the
+// absorbed days in order: [{ date, day, by }] where `by` is the off-plan day that paid.
+export function weekAbsorbed(eff, todayKey, { sessionDays = [], restDays = [] } = {}) {
+  if (!eff?.days?.length || !todayKey) return [];
+  const monday = shiftDayKey(todayKey, -WEEK_DAY_KEYS.indexOf(weekDayKey(todayKey)));
+  const boundFrom = commitmentBoundFrom(eff, monday);
+  const trained = new Set(sessionDays), rest = new Set(restDays);
+  let owed = 0;
+  const credits = [], out = [];
+  for (let i = 0; i < 7; i++) {
+    const d = shiftDayKey(monday, i);
+    if (d < boundFrom) continue;
+    if (eff.days.includes(WEEK_DAY_KEYS[i])) {
+      if (trained.has(d)) continue;
+      if (rest.has(d)) { credits.shift(); continue; }
+      if (credits.length) { out.push({ date: d, day: WEEK_DAY_KEYS[i], by: credits.shift() }); continue; }
+      if (d < todayKey) owed++;
+    } else if (trained.has(d)) {
+      if (owed > 0) owed--;
+      else credits.push(d);
+    }
+  }
+  return out;
 }
 
 // The first day of this week a commitment binds: a carried one the whole week; one made
@@ -495,11 +532,13 @@ export function weekFacts(stored, todayKey, { trained = [], restDays = [] } = {}
   if (!eff) return null;
   const monday = shiftDayKey(todayKey, -WEEK_DAY_KEYS.indexOf(weekDayKey(todayKey)));
   const boundFrom = commitmentBoundFrom(eff, monday);
+  // W328: the same absorbed days plannedDayState reads (one rule, lesson 1).
+  const absorbed = new Set(weekAbsorbed(eff, todayKey, { sessionDays: trained.map((t) => t.date), restDays }).map((a) => a.date));
   return {
     days: WEEK_DAY_KEYS.map((day, i) => {
       const date = shiftDayKey(monday, i);
       const committed = eff.days.includes(day);
-      return { date, day, committed, bound: committed && date >= boundFrom, trained: trained.filter((t) => t.date === date).map((t) => t.name ?? null), rest: restDays.includes(date) };
+      return { date, day, committed, bound: committed && date >= boundFrom, trained: trained.filter((t) => t.date === date).map((t) => t.name ?? null), rest: restDays.includes(date), ...(absorbed.has(date) ? { absorbed: true } : {}) };
     }),
   };
 }

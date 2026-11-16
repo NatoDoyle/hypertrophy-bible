@@ -13,7 +13,7 @@
 // Pure decision + injectable store/sender, so the whole thing unit-tests on the
 // file store and the Workers cron handler stays a two-liner.
 
-import { localDayKey, commitmentForDay, weekDayKey } from "../../tools/derive-core.mjs";
+import { localDayKey, commitmentForDay, weekDayKey, weekAbsorbed } from "../../tools/derive-core.mjs";
 
 export const NUDGE_STAGE_1_DAYS = 4;  // "your next session is ready when you are"
 export const NUDGE_STAGE_2_DAYS = 14; // "the door's open — re-entry is eased" (final)
@@ -27,12 +27,15 @@ export const NUDGE_STAGE_0_DAYS = 2;
 // plan (carried forward, W271), a day off the plan. Every "train today" reminder
 // stands down on it: lapse, comeback and streak-freeze pushes AND the comeback email,
 // through this ONE predicate (lesson 1). Read in the user's own calendar day.
-export function quietToday(user, now) {
+// `sessionDays` (local "YYYY-MM-DD"s, optional): with them, a committed day an off-plan
+// session already paid for (W328, weekAbsorbed) is quiet too — the same rule Today reads.
+export function quietToday(user, now, sessionDays = []) {
   const today = localDayKey(now, user?.profile?.tz_offset_min);
   if (!today) return { today: null, restToday: false, plan: null, plannedToday: null, quiet: false };
   const restToday = (user?.rest_days ?? []).includes(today);
   const plan = commitmentForDay(user?.profile?.commitment, today);
-  const plannedToday = plan ? plan.days.includes(weekDayKey(today)) : null;
+  const absorbedToday = plan ? weekAbsorbed(plan, today, { sessionDays, restDays: user?.rest_days ?? [] }).some((a) => a.date === today) : false;
+  const plannedToday = plan ? plan.days.includes(weekDayKey(today)) && !absorbedToday : null;
   return { today, restToday, plan, plannedToday, quiet: restToday || plannedToday === false };
 }
 
@@ -95,7 +98,9 @@ export async function runComebackSweep(store, sendComeback, now = Date.now()) {
       // Already loaded above — the activation branch costs no extra store call.
       createdAt: user.created_at ?? null,
       hasAnySession: !!has_any_session,
-      skipToday: quietToday(user, now).quiet,
+      // The latest session is the only one this sweep holds; it's enough for W328's
+      // absorbed day (a comeback lapse is days long — older training can't absorb today).
+      skipToday: quietToday(user, now, last_date ? [localDayKey(last_date, user.profile?.tz_offset_min)].filter(Boolean) : []).quiet,
     });
     if (!hit) continue;
     // CLAIM first (CAS — the precondition lives INSIDE the mutator, per the
