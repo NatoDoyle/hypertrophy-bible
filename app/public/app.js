@@ -826,13 +826,13 @@ async function renderSettings(soloKey = null) {
 function renderOnboarding() {
   nav.hidden = true;
   if (!onbStarted) {
-    app.innerHTML = `<div class="center" style="padding-top:14vh">${pendingCodeCard()}
+    app.innerHTML = `<div class="center onb-welcome">${pendingCodeCard()}
       <h1>The Hypertrophy Bible</h1>
       <p>Build muscle, the proven way.<br>Answer 8 quick questions (about a minute) and I'll build your plan — then you just show up.</p>
       <button class="btn" id="go">Build my plan</button>
-      <p class="muted">Free · no ads · no account needed</p>
+      <p class="muted reassure">Free · no ads · no account needed</p>
       <p class="muted" style="font-size:.8rem">By starting you agree this is training guidance, not medical advice — <a href="#" id="healthnote" style="color:var(--muted);text-decoration:underline">the honest details</a></p>
-      <button class="btn ghost" id="restore">Already have progress saved? Sign in on this device</button>
+      <button class="btn ghost quiet" id="restore">Already have progress saved? Sign in on this device</button>
       <div id="restorebox" hidden style="margin-top:6px">
         <input id="remail" type="email" inputmode="email" autocomplete="email" aria-label="Email address for your restore link" placeholder="you@email.com"
           style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
@@ -883,26 +883,26 @@ function renderOnboarding() {
     const v = answers[step.key] ?? st.def;
     const noun = step.key === "days_per_week" ? "days" : "minutes";
     body = `<div class="stepper"><button data-d="-1" aria-label="fewer ${noun}">–</button><div class="val" id="sv" aria-live="polite">${v}${st.unit || ""}</div><button data-d="1" aria-label="more ${noun}">+</button></div>
-      <p class="muted center" id="step-hint">${esc(hintOf(st.hint, v))}</p><button class="btn" id="next">Continue</button>`;
+      <p class="muted hint" id="step-hint">${esc(hintOf(st.hint, v))}</p>`;
   } else if (step.multi) {
     const sel = new Set((answers[step.key] || []).map((x) => JSON.stringify(x)));
     body = step.multi.map((o, i) => { const on = sel.has(JSON.stringify(o[1])); return `<button class="choice${on ? " sel" : ""}" data-i="${i}" aria-pressed="${on}">${esc(o[0])}</button>`; }).join("")
-      + `<p class="muted center" id="step-hint">${esc(hintOf(step.hint))}</p><button class="btn" id="next">Continue</button>`;
+      + `<p class="muted hint" id="step-hint">${esc(hintOf(step.hint))}</p>`;
   } else if (step.prefs) {
     const tp = prefsOf(answers[step.key]);
     const eq = new Set(answers.available_equipment || []);
     const styles = visibleStyles(PREF_STYLE_OPTS, eq, tp.style);
     const fams = AVOID_FAMILIES.filter((f) => f.eq.some((x) => eq.has(x)));
     const chip = (group, val, label, on) => `<button class="chip pick${on ? " sel" : ""}" data-g="${group}" data-v="${esc(val)}" aria-pressed="${on}">${esc(label)}</button>`;
-    const group = (title, chips) => chips ? `<div class="pref-group"><h3>${title}</h3>${chips}</div>` : "";
+    const group = (title, chips, sub = "") => chips ? `<div class="pref-group"><h3>${title}</h3>${sub ? `<p class="pref-sub muted">${sub}</p>` : ""}${chips}</div>` : "";
     body = (styles.length > 1 || tp.style.length ? group("I enjoy training with", styles.map((o) => chip("style", o.value, o.absent ? `${o.label} (not in your kit)` : o.label, tp.style.includes(o.value))).join("")) : "")
       // W337: variety does nothing until a lifter is past the beginner stage — not asked of a beginner (still shown when set).
       + (answers.training_status !== "beginner" || tp.variety ? group("I'd rather", PREF_VARIETY_OPTS.map(([l, v]) => chip("variety", v, l, tp.variety === v)).join("")) : "")
-      + (fams.length || avoidExtras(tp, fams).length ? group("Lifts you'd rather not do <span class=\"muted\" style=\"font-weight:400;font-size:.85rem\">— swapped when there's an equally good option</span>", fams.map((f, i) => chip("avoid", String(i), f.label, familyOn(tp, f))).join("")
+      + (fams.length || avoidExtras(tp, fams).length ? group("Lifts you'd rather not do", fams.map((f, i) => chip("avoid", String(i), f.label, familyOn(tp, f))).join("")
         // W336: a single lift skipped with "Just not for me" gets its own chip (on — tap to clear it).
-        + avoidExtras(tp, fams, (id) => { const n = exName(id); return n === id ? titleCase(id.replace(/-/g, " ")) : n; }).map((x) => chip("avoid1", x.id, x.label, true)).join("")) : "")
-      + group("If you do cardio, which would you actually do? <span class=\"muted\" style=\"font-weight:400;font-size:.85rem\">— it doesn't add sessions</span>", PREF_CARDIO_OPTS.map(([l, v]) => chip("cardio", v, l, tp.cardio.includes(v))).join(""))
-      + `<p class="muted center">${esc(step.hint || "")}</p><button class="btn" id="next">Continue</button>`;
+        + avoidExtras(tp, fams, (id) => { const n = exName(id); return n === id ? titleCase(id.replace(/-/g, " ")) : n; }).map((x) => chip("avoid1", x.id, x.label, true)).join(""), "Swapped when there's an equally good option") : "")
+      + group("If you do cardio, which would you actually do?", PREF_CARDIO_OPTS.map(([l, v]) => chip("cardio", v, l, tp.cardio.includes(v))).join(""), "It doesn't add sessions")
+      + `<p class="muted hint">${esc(step.hint || "")}</p>`;
   } else if (step.date) {
     const v = answers[step.key] || "";
     // A goal event can't be in the past — in the USER'S local calendar, not UTC's:
@@ -912,17 +912,20 @@ function renderOnboarding() {
     const todayStr = `${dNow.getFullYear()}-${String(dNow.getMonth() + 1).padStart(2, "0")}-${String(dNow.getDate()).padStart(2, "0")}`;
     body = `<input type="date" id="dateval" min="${todayStr}" value="${esc(v)}" aria-label="${esc(step.q)}"
         style="width:100%;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:14px;font-size:1.05rem;margin:0 0 8px">
-      <p class="muted center">${esc(step.hint || "")}</p><button class="btn" id="next">Continue</button>`;
+      <p class="muted hint">${esc(step.hint || "")}</p>`;
   } else {
     // Highlight the previously chosen option (when returning via Back) so it's clear
     // what you'd picked; tapping any option still advances immediately.
     // …and the recommended answer is highlighted (never auto-advanced) until they pick (W337: "Build muscle" pre-selected).
     const chosen = JSON.stringify(answers[step.key] ?? step.def);
-    body = step.opts.map((o, i) => `<button class="choice${JSON.stringify(o[1]) === chosen ? " sel" : ""}" data-i="${i}">${o[2] ? `<span style="text-align:left">${esc(o[0])}<span class="sub muted">${esc(o[2])}</span></span>` : esc(o[0])}<span>›</span></button>`).join("")
-      + (step.hint ? `<p class="muted center">${esc(hintOf(step.hint))}</p>` : "");
+    body = step.opts.map((o, i) => `<button class="choice${JSON.stringify(o[1]) === chosen ? " sel" : ""}" data-i="${i}">${o[2] ? `<span class="choice-text">${esc(o[0])}<span class="sub muted">${esc(o[2])}</span></span>` : `<span class="choice-text">${esc(o[0])}</span>`}<span class="chev" aria-hidden="true">›</span></button>`).join("")
+      + (step.hint ? `<p class="muted hint">${esc(hintOf(step.hint))}</p>` : "");
   }
-  app.innerHTML = `<div class="dots">${dots}</div><h1>${esc(typeof step.q === "function" ? step.q(answers) : step.q)}</h1>${body}
-    <button class="btn ghost" id="onb-back">‹ Back</button>`;
+  // The actions live in one footer that pins to the bottom once a long screen overflows, so Continue is always
+  // on screen (it sat below the fold on Injuries/Prefs); on a short screen it stays in flow, right under the content.
+  const hasNext = !!(step.stepper || step.multi || step.prefs || step.date);
+  app.innerHTML = `<div class="onb"><div class="dots">${dots}</div><h1>${esc(typeof step.q === "function" ? step.q(answers) : step.q)}</h1>${body}
+    <div class="onb-actions">${hasNext ? `<button class="btn" id="next">Continue</button>` : ""}<button class="btn ghost" id="onb-back">‹ Back</button></div></div>`;
   if (step.stepper) {
     const st = step.stepper;
     let v = answers[step.key] ?? st.def;
